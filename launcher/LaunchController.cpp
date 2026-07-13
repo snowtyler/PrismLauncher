@@ -64,12 +64,12 @@ LaunchController::LaunchController() = default;
 void LaunchController::executeTask()
 {
     if (!m_instance) {
-        emitFailed(tr("No instance specified!"));
+        emitFailed(tr("NO CONNECTION TARGET FOUND."));
         return;
     }
 
     if (!JavaCommon::checkJVMArgs(m_instance->settings()->get("JvmArgs").toString(), m_parentWidget)) {
-        emitFailed(tr("Invalid Java arguments specified. Please fix this first."));
+        emitFailed(tr("INVALID JAVA ALIGNMENT. PLEASE RECONFIGURE SYSTEM LOGIC."));
         return;
     }
 
@@ -94,10 +94,9 @@ void LaunchController::decideAccount()
 
     if (!accounts->anyAccountIsValid()) {
         // Tell the user they need to log in at least one account in order to play.
-        auto reply = CustomMessageBox::selectable(m_parentWidget, tr("No Accounts"),
-                                                  tr("In order to play Minecraft, you must have at least one Microsoft "
-                                                     "account which owns Minecraft logged in. "
-                                                     "Would you like to open the account manager to add an account now?"),
+        auto reply = CustomMessageBox::selectable(m_parentWidget, tr("NO VESSELS DEFINED"),
+                                                  tr("YOU MUST SPECIFY AN IDENTITY BEFORE COMMENCING INTERACTION.\n\n"
+                                                     "ESTABLISH A CONNECTION CONFIGURATION NOW?"),
                                                   QMessageBox::Information, QMessageBox::Yes | QMessageBox::No)
                          ->exec();
 
@@ -137,7 +136,9 @@ LaunchDecision LaunchController::decideLaunchMode()
     const auto* accounts = APPLICATION->accounts();
     MinecraftAccountPtr accountToCheck = nullptr;
 
-    if (m_accountToUse->accountType() != AccountType::Offline) {
+    if (m_accountToUse->accountType() == AccountType::Offline) {
+        accountToCheck = m_accountToUse;
+    } else if (m_accountToUse->accountType() != AccountType::Offline) {
         accountToCheck = m_accountToUse->ownsMinecraft() ? m_accountToUse : nullptr;
     } else if (const auto defaultAccount = accounts->defaultAccount(); defaultAccount && defaultAccount->ownsMinecraft()) {
         accountToCheck = defaultAccount;
@@ -184,16 +185,16 @@ LaunchDecision LaunchController::decideLaunchMode()
     QString reauthReason;
     switch (state) {
         case AccountState::Errored:
-            reauthReason = tr("An error occurred while refreshing '%1'").arg(accountToCheck->profileName());
+            reauthReason = tr("AN ERROR OCCURRED WHILE CONNECTING TO '%1'").arg(accountToCheck->profileName().toUpper());
             break;
         case AccountState::Expired:
-            reauthReason = tr("'%1' has expired and needs to be reauthenticated").arg(accountToCheck->profileName());
+            reauthReason = tr("CONNECTION TO '%1' HAS EXPIRED. RE-ESTABLISH CONTACT.").arg(accountToCheck->profileName().toUpper());
             break;
         case AccountState::Disabled:
-            reauthReason = tr("The launcher's client identification has changed");
+            reauthReason = tr("THE DEVICE IDENTITY ALIGNMENT HAS RECENTLY SHIFTED.");
             break;
         case AccountState::Gone:
-            reauthReason = tr("'%1' no longer exists on the servers").arg(accountToCheck->profileName());
+            reauthReason = tr("'%1' NO LONGER EXISTS WITHIN THIS SPATIAL GRID.").arg(accountToCheck->profileName().toUpper());
             break;
         default:
             m_actualLaunchMode =
@@ -371,14 +372,14 @@ void LaunchController::launchInstance()
     Q_ASSERT(m_session.get() != nullptr);
 
     if (!m_instance->reloadSettings()) {
-        QMessageBox::critical(m_parentWidget, tr("Error!"), tr("Couldn't load the instance profile."));
-        emitFailed(tr("Couldn't load the instance profile."));
+        QMessageBox::critical(m_parentWidget, tr("CRITICAL SHUTDOWN"), tr("COULD NOT ALIGN CODES WITH VESSEL PROFILE."));
+        emitFailed(tr("COULD NOT ALIGN CODES WITH VESSEL PROFILE."));
         return;
     }
 
     m_launcher = m_instance->createLaunchTask(m_session, m_targetToJoin);
     if (!m_launcher) {
-        emitFailed(tr("Couldn't instantiate a launcher."));
+        emitFailed(tr("COULD NOT ESTABLISH THE INTERACTION GATEWAY."));
         return;
     }
 
@@ -487,9 +488,8 @@ bool LaunchController::abort()
     if (!m_launcher->canAbort()) {
         return false;
     }
-    auto response = CustomMessageBox::selectable(m_parentWidget, tr("Kill Minecraft?"),
-                                                 tr("This can cause the instance to get corrupted and should only be used if Minecraft "
-                                                    "is frozen for some reason"),
+    auto response = CustomMessageBox::selectable(m_parentWidget, tr("TERMINATE VESSEL CONNECTION?"),
+                                                 tr("THIS CAN CAUSE UNSTABLE DATA CORRUPTION. FORCE SHUTDOWN OF THE VESSEL INTERACTION?"),
                                                  QMessageBox::Question, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes)
                         ->exec();
     if (response == QMessageBox::Yes) {

@@ -53,8 +53,9 @@ class LaunchController;
 class NewsChecker;
 class QToolButton;
 class InstanceProxyModel;
-class LabeledToolButton;
 class QLabel;
+class QWidget;
+class QPushButton;
 class MinecraftLauncher;
 class BaseProfilerFactory;
 class InstanceView;
@@ -252,4 +253,17 @@ class MainWindow : public QMainWindow {
 
     // managed by the application object
     Task* m_versionLoadTask = nullptr;
+
+    // Custom Deltarune themed UI
+    QWidget* m_customCentralWidget = nullptr;
+    QLabel* m_customTitleLabel = nullptr;
+    QLabel* m_customStatusLabel = nullptr;
+    QPushButton* m_customConnectButton = nullptr;
+    QPushButton* m_customAccountsButton = nullptr;
+    QPushButton* m_customSettingsButton = nullptr;
+    QPushButton* m_customExitButton = nullptr;
+
+   private slots:
+    void onConnectClicked();
+    void onAccountsClicked();
 };

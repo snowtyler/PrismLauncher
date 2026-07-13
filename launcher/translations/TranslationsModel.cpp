@@ -446,6 +446,7 @@ void TranslationsModel::setUseSystemLocale(const bool useSystemLocale) const
 
 bool TranslationsModel::selectLanguage(QString key) const
 {
+    key = g_defaultLangCode;
     QString& langCode = key;
     auto langPtr = findLanguageAsOptional(key);
 

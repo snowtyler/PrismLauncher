@@ -34,6 +34,7 @@
  */
 
 #include <iostream>
+#include <QFontDatabase>
 
 #include "Application.h"
 
@@ -56,7 +57,13 @@ int main(int argc, char* argv[])
             Q_INIT_RESOURCE(multimc);
             Q_INIT_RESOURCE(backgrounds);
             Q_INIT_RESOURCE(documents);
-            Q_INIT_RESOURCE(prismlauncher);
+            Q_INIT_RESOURCE(device);
+            int fontId = QFontDatabase::addApplicationFont(":/gaster.ttf");
+            if (fontId != -1) {
+                QString family = QFontDatabase::applicationFontFamilies(fontId).at(0);
+                QFont customFont(family);
+                QApplication::setFont(customFont);
+            }
 
             Q_INIT_RESOURCE(pe_dark);
             Q_INIT_RESOURCE(pe_light);

@@ -68,8 +68,9 @@
 #include <QProgressDialog>
 #include <QShortcut>
 #include <QStatusBar>
-#include <QToolBar>
 #include <QToolButton>
+#include <QPushButton>
+#include <QVBoxLayout>
 #include <QWidget>
 #include <QWidgetAction>
 #include <memory>
@@ -95,6 +96,7 @@
 #include "ui/GuiUtil.h"
 #include "ui/ViewLogWindow.h"
 #include "ui/dialogs/AboutDialog.h"
+#include "ui/dialogs/MSALoginDialog.h"
 #include "ui/dialogs/CopyInstanceDialog.h"
 #include "ui/dialogs/CreateShortcutDialog.h"
 #include "ui/dialogs/CustomMessageBox.h"
@@ -428,8 +430,99 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
 
-    // removing this looks stupid
-    view->setFocus();
+    // Hide standard elements
+    ui->mainToolBar->hide();
+    ui->newsToolBar->hide();
+    ui->instanceToolBar->hide();
+    statusBar()->hide();
+    menuBar()->hide();
+
+    // Hide the standard instance view list
+    view->hide();
+
+    // Construct Custom Deltarune themed UI
+    m_customCentralWidget = new QWidget(ui->centralWidget);
+    m_customCentralWidget->setObjectName("customCentralWidget");
+    m_customCentralWidget->setStyleSheet(
+        "QWidget#customCentralWidget {"
+        "    background-color: black;"
+        "    border: 4px solid #00C000;"
+        "    font-family: '8bitoperator JVE';"
+        "}"
+        "QLabel {"
+        "    color: white;"
+        "    font-family: '8bitoperator JVE';"
+        "}"
+        "QPushButton {"
+        "    background-color: black;"
+        "    color: white;"
+        "    border: 2px solid #00C000;"
+        "    font-family: '8bitoperator JVE';"
+        "    font-size: 16px;"
+        "    padding: 8px 16px;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #00C000;"
+        "    color: black;"
+        "}"
+    );
+
+    QVBoxLayout* mainLayout = new QVBoxLayout(m_customCentralWidget);
+    mainLayout->setAlignment(Qt::AlignCenter);
+    mainLayout->setContentsMargins(50, 50, 50, 50);
+
+    m_customTitleLabel = new QLabel("T E M P E S T", m_customCentralWidget);
+    m_customTitleLabel->setAlignment(Qt::AlignCenter);
+    QFont titleFont = m_customTitleLabel->font();
+    titleFont.setPointSize(36);
+    titleFont.setBold(true);
+    titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 6);
+    m_customTitleLabel->setFont(titleFont);
+    mainLayout->addWidget(m_customTitleLabel);
+
+    mainLayout->addSpacing(40);
+
+    m_customStatusLabel = new QLabel("OBSERVING VESSEL...\nDO YOU WISH TO CONTACT THE CONNECTION?", m_customCentralWidget);
+    m_customStatusLabel->setAlignment(Qt::AlignCenter);
+    QFont statusFont = m_customStatusLabel->font();
+    statusFont.setPointSize(14);
+    m_customStatusLabel->setFont(statusFont);
+    mainLayout->addWidget(m_customStatusLabel);
+
+    mainLayout->addSpacing(60);
+
+    m_customConnectButton = new QPushButton("ESTABLISH CONNECTION", m_customCentralWidget);
+    m_customConnectButton->setMinimumWidth(300);
+    m_customConnectButton->setMinimumHeight(50);
+    QFont buttonFont = m_customConnectButton->font();
+    buttonFont.setPointSize(16);
+    buttonFont.setBold(true);
+    m_customConnectButton->setFont(buttonFont);
+    connect(m_customConnectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
+    mainLayout->addWidget(m_customConnectButton, 0, Qt::AlignCenter);
+
+    mainLayout->addSpacing(50);
+
+    QHBoxLayout* bottomLayout = new QHBoxLayout();
+    bottomLayout->setAlignment(Qt::AlignCenter);
+    bottomLayout->setSpacing(20);
+
+    m_customAccountsButton = new QPushButton("LINK VESSEL", m_customCentralWidget);
+    connect(m_customAccountsButton, &QPushButton::clicked, this, &MainWindow::onAccountsClicked);
+    bottomLayout->addWidget(m_customAccountsButton);
+
+    m_customSettingsButton = new QPushButton("CONFIG", m_customCentralWidget);
+    connect(m_customSettingsButton, &QPushButton::clicked, this, &MainWindow::on_actionSettings_triggered);
+    bottomLayout->addWidget(m_customSettingsButton);
+
+    m_customExitButton = new QPushButton("TERMINATE", m_customCentralWidget);
+    connect(m_customExitButton, &QPushButton::clicked, qApp, &QApplication::quit);
+    bottomLayout->addWidget(m_customExitButton);
+
+    mainLayout->addLayout(bottomLayout);
+
+    // Add our custom widget to the horizontal layout of centralWidget so it fills the screen
+    ui->horizontalLayout->addWidget(m_customCentralWidget);
 
     retranslateUi();
 }
@@ -448,12 +541,7 @@ void MainWindow::keyReleaseEvent(QKeyEvent* event)
 
 void MainWindow::retranslateUi()
 {
-    if (m_selectedInstance) {
-        m_statusLeft->setText(m_selectedInstance->getStatusbarDescription());
-    } else {
-        m_statusLeft->setText(tr("No instance selected"));
-    }
-
+    setWindowTitle("DEVICE");
     ui->retranslateUi(this);
 
     MinecraftAccountPtr defaultAccount = APPLICATION->accounts()->defaultAccount();
@@ -590,8 +678,10 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
 
 void MainWindow::updateMainToolBar()
 {
-    ui->menuBar->setVisible(APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
-    ui->mainToolBar->setVisible(ui->menuBar->isNativeMenuBar() || !APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool());
+    ui->menuBar->setVisible(false);
+    ui->mainToolBar->setVisible(false);
+    ui->newsToolBar->setVisible(false);
+    ui->instanceToolBar->setVisible(false);
 }
 
 void MainWindow::updateLaunchButton()
@@ -750,7 +840,6 @@ void MainWindow::defaultAccountChanged()
 
     MinecraftAccountPtr account = APPLICATION->accounts()->defaultAccount();
 
-    // FIXME: this needs adjustment for MSA
     if (account && account->profileName() != "") {
         auto profileLabel = profileInUseFilter(account->displayName(), account->isInUse());
         ui->actionAccountsButton->setText(profileLabel);
@@ -760,12 +849,22 @@ void MainWindow::defaultAccountChanged()
         } else {
             ui->actionAccountsButton->setIcon(face);
         }
+        
+        if (m_customStatusLabel) {
+            m_customStatusLabel->setText(
+                QString("WE CALLED IT \"%1.\"\n\nDO YOU WISH TO CONTINUE?").arg(account->profileName().toUpper())
+            );
+        }
         return;
     }
 
     // Set the icon to the "no account" icon.
     ui->actionAccountsButton->setIcon(QIcon::fromTheme("noaccount"));
     ui->actionAccountsButton->setText(tr("Accounts"));
+    
+    if (m_customStatusLabel) {
+        m_customStatusLabel->setText("FIRST.\n\nYOU MUST LINK A VESSEL.");
+    }
 }
 
 bool MainWindow::eventFilter(QObject* obj, QEvent* ev)
@@ -1370,6 +1469,25 @@ void MainWindow::checkForUpdates()
 
 void MainWindow::on_actionSettings_triggered()
 {
+    if (QApplication::keyboardModifiers() & Qt::ShiftModifier) {
+        BaseInstance* targetInstance = m_selectedInstance;
+        if (!targetInstance) {
+            APPLICATION->instances()->loadList();
+            auto instances = APPLICATION->instances();
+            for (int i = 0; i < instances->rowCount(); ++i) {
+                auto inst = instances->at(i);
+                if (inst && inst->id() == "TEMPEST") {
+                    targetInstance = inst;
+                    m_selectedInstance = inst;
+                    break;
+                }
+            }
+        }
+        if (targetInstance && targetInstance->canEdit()) {
+            APPLICATION->showInstanceWindow(targetInstance, "settings");
+            return;
+        }
+    }
     APPLICATION->ShowGlobalSettings(this, "global-settings");
 }
 
@@ -1783,4 +1901,96 @@ void MainWindow::refreshCurrentInstance()
 {
     auto current = view->selectionModel()->currentIndex();
     instanceChanged(current, current);
+}
+
+void MainWindow::onConnectClicked()
+{
+    // Ensure user has logged in or created an offline identity
+    if (!APPLICATION->accounts()->defaultAccount()) {
+        m_customStatusLabel->setText("IDENTIFICATION REQUIRED.");
+        onAccountsClicked();
+        if (!APPLICATION->accounts()->defaultAccount()) {
+            return; // User cancelled or failed
+        }
+    }
+
+    // Reload instance list to scan the instances directory
+    APPLICATION->instances()->loadList();
+
+    // Look for the instance directly in the loaded list
+    BaseInstance* tempest = nullptr;
+    auto instances = APPLICATION->instances();
+    for (int i = 0; i < instances->rowCount(); ++i) {
+        auto inst = instances->at(i);
+        if (inst && inst->id() == "TEMPEST") {
+            tempest = inst;
+            break;
+        }
+    }
+
+    if (tempest) {
+        m_customStatusLabel->setText("VESSEL ACQUIRED.\nESTABLISHING CONNECTION...");
+        qApp->processEvents();
+        m_selectedInstance = tempest;
+        APPLICATION->launch(tempest);
+    } else {
+        m_customStatusLabel->setText("ERROR: NO VESSEL DETECTED.\nPLEASE CHECK THE INSTANCES FOLDER.");
+    }
+}
+
+void MainWindow::onAccountsClicked()
+{
+    // Custom menu styled with W. D. Gaster options
+    QMenu menu(this);
+    menu.setStyleSheet(
+        "QMenu {"
+        "    background-color: black;"
+        "    color: white;"
+        "    border: 1px solid #00C000;"
+        "    font-family: '8bitoperator JVE';"
+        "}"
+        "QMenu::item:selected {"
+        "    background-color: #00C000;"
+        "    color: black;"
+        "}"
+    );
+
+    QAction* actMicrosoft = menu.addAction("ESTABLISH MICROSOFT CONNECTION");
+    QAction* actOffline = menu.addAction("ESTABLISH OFFLINE IDENTITY");
+    
+    QAction* selected = menu.exec(m_customAccountsButton->mapToGlobal(QPoint(0, m_customAccountsButton->height())));
+    if (!selected) {
+        return;
+    }
+
+    if (selected == actMicrosoft) {
+        m_customStatusLabel->setText("WAITING FOR EXTERNAL PROTOCOL...");
+        qApp->processEvents();
+        
+        auto account = MSALoginDialog::newAccount(this);
+        if (account) {
+            APPLICATION->accounts()->addAccount(account);
+            APPLICATION->accounts()->setDefaultAccount(account);
+            m_customStatusLabel->setText("CONNECTION ESTABLISHED.");
+            QTimer::singleShot(3000, this, [this, account]() {
+                if (m_customStatusLabel && m_customStatusLabel->text() == "VESSEL FOUND.") {
+                    m_customStatusLabel->setText(QString("CONNECTION ESTABLISHED.\nLINKED TO ACCOUNT: %1").arg(account->displayName().toUpper()));
+                }
+            });
+        } else {
+            m_customStatusLabel->setText("EXTERNAL PROTOCOL ABORTED.");
+        }
+    } else if (selected == actOffline) {
+        bool ok = false;
+        QString text = QInputDialog::getText(this, "IDENTITY", "ENTER YOUR USERNAME:", QLineEdit::Normal, QString(), &ok);
+        if (ok && !text.trimmed().isEmpty()) {
+            auto account = MinecraftAccount::createOffline(text.trimmed());
+            if (account) {
+                account->login()->start();
+                APPLICATION->accounts()->addAccount(account);
+                APPLICATION->accounts()->setDefaultAccount(account);
+                m_customStatusLabel->setText(QString("WE CALLED IT \"%1.\"").arg(text.trimmed().toUpper()));
+            }
+        }
+    }
 }
