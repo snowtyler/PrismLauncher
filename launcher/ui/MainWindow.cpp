@@ -44,6 +44,9 @@
 
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
+#include "widgets/ModpackDashboard.h"
+#include <QStackedWidget>
+#include <QTabBar>
 
 #include <QDir>
 #include <QFileInfo>
@@ -106,6 +109,8 @@
 #include "ui/dialogs/NewsDialog.h"
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui/dialogs/skins/SkinManageDialog.h"
+#include "ui/dialogs/UploadConfirmDialog.h"
+#include "tasks/SyncedInstanceUploadTask.h"
 #include "ui/instanceview/InstanceDelegate.h"
 #include "ui/instanceview/InstanceProxyModel.h"
 #include "ui/instanceview/InstanceView.h"
@@ -199,10 +204,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         foldersMenuButton->setPopupMode(QToolButton::InstantPopup);
 
         helpMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionHelpButton));
-        ui->actionHelpButton->setMenu(new QMenu(this));
-        ui->actionHelpButton->menu()->addActions(ui->helpMenu->actions());
-        ui->actionHelpButton->menu()->removeAction(ui->actionCheckUpdate);
-        helpMenuButton->setPopupMode(QToolButton::InstantPopup);
+        if (helpMenuButton) {
+            ui->actionHelpButton->setMenu(new QMenu(this));
+            ui->actionHelpButton->menu()->addActions(ui->helpMenu->actions());
+            ui->actionHelpButton->menu()->removeAction(ui->actionCheckUpdate);
+            helpMenuButton->setPopupMode(QToolButton::InstantPopup);
+        }
 
         auto accountMenuButton = dynamic_cast<QToolButton*>(ui->mainToolBar->widgetForAction(ui->actionAccountsButton));
         accountMenuButton->setPopupMode(QToolButton::InstantPopup);
@@ -230,6 +237,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         // disabled until we have an instance selected
         ui->instanceToolBar->setEnabled(false);
         setInstanceActionsEnabled(false);
+
+        ui->instanceToolBar->setVisible(false);
+        ui->newsToolBar->setVisible(false);
 
         // add a close button at the end of the main toolbar when running on gamescope / steam deck
         // this is only needed on gamescope because it defaults to an X11/XWayland session and
@@ -332,7 +342,53 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         view->setSourceOfGroupCollapseStatus(
             [](const QString& groupName) -> bool { return APPLICATION->instances()->isGroupCollapsed(groupName); });
         connect(view, &InstanceView::groupStateChanged, APPLICATION->instances(), &InstanceList::on_GroupStateChanged);
-        ui->horizontalLayout->addWidget(view);
+        // Create views stacked container
+        stackedWidget = new QStackedWidget(ui->centralWidget);
+        
+        dashboard = new ModpackDashboard(ui->centralWidget);
+        stackedWidget->addWidget(dashboard);
+        stackedWidget->addWidget(view);
+
+        // Tabs to switch between Modpacks dashboard and Instances grid
+        auto* leftLayout = new QVBoxLayout();
+        leftLayout->setContentsMargins(0, 0, 0, 0);
+        leftLayout->setSpacing(5);
+
+        viewTabs = new QTabBar(ui->centralWidget);
+        viewTabs->addTab(tr("Modpacks"));
+        viewTabs->addTab(tr("Instances"));
+        viewTabs->setVisible(dashboard->isAdminMode());
+        viewTabs->setStyleSheet(
+            "QTabBar::tab {"
+            "  background: #1e1e2e; color: #a6adc8; border: 1px solid #313244;"
+            "  border-top-left-radius: 8px; border-top-right-radius: 8px;"
+            "  padding: 8px 16px; font-weight: bold;"
+            "}"
+            "QTabBar::tab:selected {"
+            "  background: #252538; color: #cba6f7; border-bottom: 2px solid #cba6f7;"
+            "}"
+        );
+        leftLayout->addWidget(viewTabs);
+        leftLayout->addWidget(stackedWidget);
+
+        ui->horizontalLayout->insertLayout(0, leftLayout, 1);
+
+        connect(viewTabs, &QTabBar::currentChanged, stackedWidget, &QStackedWidget::setCurrentIndex);
+
+        connect(dashboard, &ModpackDashboard::launchInstance, this, [this](const QString& id) {
+            BaseInstance* inst = APPLICATION->instances()->getInstanceById(id);
+            if (inst) {
+                activateInstance(inst);
+            }
+        });
+        connect(dashboard, &ModpackDashboard::editInstance, this, [this](const QString& id) {
+            BaseInstance* inst = APPLICATION->instances()->getInstanceById(id);
+            if (inst) {
+                if (inst->canEdit()) {
+                    APPLICATION->showInstanceWindow(inst);
+                }
+            }
+        });
     }
     // The cat background
     {
@@ -382,6 +438,46 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     m_statusCenter = new QLabel(tr("Total playtime: 0s"), this);
     statusBar()->addPermanentWidget(m_statusLeft, 1);
     statusBar()->addPermanentWidget(m_statusCenter, 0);
+
+    auto toggleAdminMode = [this]() {
+        if (!dashboard) return;
+        if (dashboard->isAdminMode()) {
+            dashboard->setAdminMode(false);
+            if (viewTabs) {
+                viewTabs->setVisible(false);
+                viewTabs->setCurrentIndex(0);
+                stackedWidget->setCurrentIndex(0);
+            }
+            QMessageBox::information(this, tr("Admin Mode"), tr("Admin Mode deactivated."));
+        } else {
+            bool ok;
+            QString pwd = QInputDialog::getText(this, tr("Admin Mode"), tr("Enter Admin Password:"), QLineEdit::Password, "", &ok);
+            if (ok) {
+                QString expected = APPLICATION->settings()->get("AdminPassword").toString();
+                if (pwd == expected) {
+                    dashboard->setAdminMode(true);
+                    if (viewTabs) {
+                        viewTabs->setVisible(true);
+                    }
+                    QMessageBox::information(this, tr("Admin Mode"), tr("Admin Mode activated."));
+                } else {
+                    QMessageBox::critical(this, tr("Admin Mode"), tr("Invalid password."));
+                }
+            }
+        }
+    };
+
+    auto* adminShortcut = new QShortcut(QKeySequence("Ctrl+Shift+A"), this);
+    connect(adminShortcut, &QShortcut::activated, this, toggleAdminMode);
+
+    auto* gearButton = new QPushButton(this);
+    gearButton->setIcon(QIcon::fromTheme("settings"));
+    gearButton->setFlat(true);
+    gearButton->setFixedSize(16, 16);
+    gearButton->setStyleSheet("border: none; background: transparent;");
+    gearButton->setCursor(Qt::PointingHandCursor);
+    statusBar()->addPermanentWidget(gearButton, 0);
+    connect(gearButton, &QPushButton::clicked, this, toggleAdminMode);
 
     // Add "manage accounts" button, right align
     QWidget* spacer = new QWidget();
@@ -468,7 +564,7 @@ void MainWindow::retranslateUi()
     renameButton->setToolTip(ui->actionRenameInstance->toolTip());
 
     // replace the %1 with the launcher display name in some actions
-    if (helpMenuButton->toolTip().contains("%1"))
+    if (helpMenuButton && helpMenuButton->toolTip().contains("%1"))
         helpMenuButton->setToolTip(helpMenuButton->toolTip().arg(BuildConfig.LAUNCHER_DISPLAYNAME));
 
     for (auto action : ui->helpMenu->actions()) {
@@ -552,6 +648,118 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
         QAction* actionVoid = new QAction(m_selectedInstance->name(), this);
         actionVoid->setEnabled(false);
         actions.prepend(actionVoid);
+
+        // Synced Instance custom conversion management options
+        bool isSynced = m_selectedInstance->settings()->get("IsSyncedInstance").toBool();
+        if (!isSynced) {
+            QAction* actionUpload = new QAction(tr("Upload to R2 as Synced Modpack"), this);
+            connect(actionUpload, &QAction::triggered, this, [this]() {
+                UploadConfirmDialog dlg(m_selectedInstance, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    QString ver = dlg.versionEdit->text().trimmed();
+                    QString shortc = dlg.shortcodeEdit->text().trimmed().toUpper();
+                    QString desc = dlg.descriptionEdit->text().trimmed();
+                    bool isPrivate = dlg.privateCheck->isChecked();
+                    QString accessKey = dlg.accessKeyEdit->text().trimmed();
+                    QString secretKey = dlg.secretKeyEdit->text().trimmed();
+                    QString endpoint = dlg.endpointEdit->text().trimmed();
+                    QString bucket = dlg.bucketEdit->text().trimmed();
+                    QString publicUrl = dlg.publicUrlEdit->text().trimmed();
+
+                    if (ver.isEmpty() || shortc.isEmpty() || accessKey.isEmpty() || secretKey.isEmpty() ||
+                        endpoint.isEmpty() || bucket.isEmpty() || publicUrl.isEmpty()) {
+                        QMessageBox::warning(this, tr("Upload Error"), tr("All fields except description are required."));
+                        return;
+                    }
+
+                    // Save credentials & connection details globally
+                    APPLICATION->settings()->set("SyncR2AccessKey", accessKey);
+                    APPLICATION->settings()->set("SyncR2SecretKey", secretKey);
+                    APPLICATION->settings()->set("SyncR2Endpoint", endpoint);
+                    APPLICATION->settings()->set("SyncR2Bucket", bucket);
+                    APPLICATION->settings()->set("SyncR2PublicUrl", publicUrl);
+
+                    m_selectedInstance->settings()->set("SyncShortcode", shortc);
+                    m_selectedInstance->settings()->set("ExportVersion", ver);
+                    m_selectedInstance->settings()->set("SyncIsPrivate", isPrivate);
+                    m_selectedInstance->settings()->set("ExportSummary", desc);
+                    m_selectedInstance->saveNow();
+
+                    // Collect files to upload based on tree selection
+                    QFileInfoList files;
+                    MMCZip::collectFileListRecursively(m_selectedInstance->instanceRoot(), nullptr, &files,
+                                                       std::bind(&FileIgnoreProxy::filterFile, dlg.proxyModel, std::placeholders::_1));
+
+                    QStringList selectedRelPaths;
+                    for (const auto& fileInfo : files) {
+                        QString relPath = QDir(m_selectedInstance->instanceRoot()).relativeFilePath(fileInfo.absoluteFilePath());
+                        selectedRelPaths.append(relPath);
+                    }
+
+                    auto uploadTask = makeShared<SyncedInstanceUploadTask>(m_selectedInstance, accessKey, secretKey, selectedRelPaths, dlg.bannerImagePath);
+                    connect(uploadTask.get(), &Task::failed, this, [this](QString reason) {
+                        QMessageBox::critical(this, tr("Upload Error"), reason);
+                    });
+                    ProgressDialog uploadDialog(this);
+                    uploadDialog.execWithTask(uploadTask.get());
+
+                    if (uploadTask->wasSuccessful()) {
+                        m_selectedInstance->settings()->set("SyncVersion", ver);
+                        m_selectedInstance->saveNow();
+                        QMessageBox::information(this, tr("Success"), tr("Instance uploaded successfully to R2! You can push future updates here anytime."));
+                    }
+
+                    if (dashboard) {
+                        dashboard->refreshDashboard();
+                    }
+                }
+            });
+            actions.append(actionUpload);
+        } else {
+            QAction* actionEditShortcode = new QAction(tr("Edit Sync Shortcode"), this);
+            connect(actionEditShortcode, &QAction::triggered, this, [this]() {
+                bool ok;
+                QString current = m_selectedInstance->settings()->get("SyncShortcode").toString();
+                QString shortcode = QInputDialog::getText(this, tr("Edit Sync Shortcode"),
+                                                     tr("Enter Sync Shortcode:"), QLineEdit::Normal, current, &ok);
+                if (ok && !shortcode.trimmed().isEmpty()) {
+                    m_selectedInstance->settings()->set("SyncShortcode", shortcode.trimmed().toUpper());
+                    m_selectedInstance->saveNow();
+                    QMessageBox::information(this, tr("Success"), tr("Sync shortcode updated!"));
+                    if (dashboard) {
+                        dashboard->refreshDashboard();
+                    }
+                }
+            });
+            actions.append(actionEditShortcode);
+
+            QAction* actionRevert = new QAction(tr("Revert to Normal Instance"), this);
+            connect(actionRevert, &QAction::triggered, this, [this]() {
+                auto btn = QMessageBox::question(this, tr("Revert Instance"),
+                                                 tr("Are you sure you want to revert this to a normal instance? It will no longer sync with R2."),
+                                                 QMessageBox::Yes | QMessageBox::No);
+                if (btn == QMessageBox::Yes) {
+                    QString oldRoot = m_selectedInstance->instanceRoot();
+                    QString instDir = APPLICATION->settings()->get("InstanceDir").toString();
+                    QString newRoot = FS::PathCombine(instDir, m_selectedInstance->id());
+
+                    m_selectedInstance->settings()->set("IsSyncedInstance", false);
+                    m_selectedInstance->saveNow();
+
+                    if (FS::move(oldRoot, newRoot)) {
+                        APPLICATION->instances()->loadList();
+                        QMessageBox::information(this, tr("Success"), tr("Instance reverted to a normal instance and moved back to standard instances directory."));
+                    } else {
+                        QMessageBox::warning(this, tr("Warning"), tr("Instance reverted, but failed to move the directory."));
+                    }
+
+                    if (dashboard) {
+                        dashboard->refreshDashboard();
+                    }
+                }
+            });
+            actions.append(actionRevert);
+        }
     } else {
         auto group = view->groupNameAt(pos);
 
@@ -1014,7 +1222,7 @@ void MainWindow::processURLs(QList<QUrl> urls)
                     dlUrlDialod.execWithTask(job.get());
                 }
 
-            } else if (url.scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME && !isExternalURLImport) {
+            } else if ((url.scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME || url.scheme() == "prismlauncher") && !isExternalURLImport && url.host() == "oauth") {
                 QVariantMap receivedData;
                 const QUrlQuery query(url.query());
                 const auto items = query.queryItems();

@@ -71,3 +71,19 @@ bool InstanceProxyModel::subSortLessThan(const QModelIndex& left, const QModelIn
         return m_naturalSort.compare(pdataLeft->name(), pdataRight->name()) < 0;
     }
 }
+
+bool InstanceProxyModel::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
+{
+    QModelIndex sourceIndex = sourceModel()->index(source_row, 0, source_parent);
+    if (!sourceIndex.isValid()) {
+        return false;
+    }
+    BaseInstance* pdata = static_cast<BaseInstance*>(sourceIndex.internalPointer());
+    if (pdata) {
+        bool isSynced = pdata->settings()->get("IsSyncedInstance").toBool();
+        if (isSynced) {
+            return false;
+        }
+    }
+    return QSortFilterProxyModel::filterAcceptsRow(source_row, source_parent);
+}

@@ -32,12 +32,23 @@
 
 static Version mcVersion(BaseInstance* inst)
 {
-    return static_cast<MinecraftInstance*>(inst)->getPackProfile()->getComponent("net.minecraft")->getVersion();
+    auto* mcInst = dynamic_cast<MinecraftInstance*>(inst);
+    if (!mcInst) return {};
+    auto* profile = mcInst->getPackProfile();
+    if (!profile) return {};
+    auto component = profile->getComponent("net.minecraft");
+    if (!component) return {};
+    return component->getVersion();
 }
 
 static ModPlatform::ModLoaderTypes mcLoaders(BaseInstance* inst)
 {
-    return static_cast<MinecraftInstance*>(inst)->getPackProfile()->getSupportedModLoaders().value();
+    auto* mcInst = dynamic_cast<MinecraftInstance*>(inst);
+    if (!mcInst) return {};
+    auto* profile = mcInst->getPackProfile();
+    if (!profile) return {};
+    auto loaders = profile->getSupportedModLoaders();
+    return loaders.value_or(ModPlatform::ModLoaderTypes{});
 }
 
 static bool checkDependencies(std::shared_ptr<GetModDependenciesTask::PackDependency> sel,

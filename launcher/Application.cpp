@@ -638,6 +638,16 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         // Provide a fallback for migration from PolyMC
         m_settings.reset(new INISettingsObject({ BuildConfig.LAUNCHER_CONFIGFILE, "polymc.cfg", "multimc.cfg" }, this));
 
+        // Cloudflare R2 Sync settings
+        m_settings->registerSetting("SyncProvider", 1); // 1 = Cloudflare R2
+        m_settings->registerSetting("SyncR2Endpoint", "https://32a5366f869b42ff9cfc2eca71ecc5e1.r2.cloudflarestorage.com");
+        m_settings->registerSetting("SyncR2Bucket", "prism-sync");
+        m_settings->registerSetting("SyncR2PublicUrl", "https://pub-32a5366f869b42ff9cfc2eca71ecc5e1.r2.dev/");
+        m_settings->registerSetting("SyncR2AccessKey", QString());
+        m_settings->registerSetting("SyncR2SecretKey", QString());
+        m_settings->registerSetting("PrivatePacks", QStringList());
+        m_settings->registerSetting("AdminPassword", "syncadmin");
+
         // Theming
         m_settings->registerSetting("IconTheme", QString());
         m_settings->registerSetting("ApplicationTheme", QString());
@@ -794,7 +804,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("CatOpacity", 100);
         m_settings->registerSetting("CatFit", "fit");
 
-        m_settings->registerSetting("StatusBarVisible", true);
+        m_settings->registerSetting("StatusBarVisible", false);
 
         m_settings->registerSetting("ToolbarsLocked", false);
 
@@ -1422,7 +1432,8 @@ void Application::messageReceived(const QByteArray& message)
         bool isLoginAtempt = false;
         if (command == "import") {
             QString url = received.args["url"];
-            isLoginAtempt = !url.isEmpty() && normalizeImportUrl(url).scheme() == BuildConfig.LAUNCHER_APP_BINARY_NAME;
+            auto scheme = normalizeImportUrl(url).scheme();
+            isLoginAtempt = !url.isEmpty() && (scheme == BuildConfig.LAUNCHER_APP_BINARY_NAME || scheme == "prismlauncher");
         }
         if (!isLoginAtempt) {
             qDebug() << "Received message" << message << "while still initializing. It will be ignored.";

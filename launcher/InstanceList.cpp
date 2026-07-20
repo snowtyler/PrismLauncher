@@ -471,25 +471,39 @@ QList<InstanceId> InstanceList::discoverInstances()
 {
     qInfo() << "Discovering instances in" << m_instDir;
     QList<InstanceId> out;
+    
+    // 1. Scan standard instances directory
     QDirIterator iter(m_instDir, QDir::Dirs | QDir::NoDot | QDir::NoDotDot | QDir::Readable | QDir::Hidden, QDirIterator::FollowSymlinks);
     while (iter.hasNext()) {
         QString subDir = iter.next();
         QFileInfo dirInfo(subDir);
         if (!QFileInfo(FS::PathCombine(subDir, "instance.cfg")).exists())
             continue;
-        // if it is a symlink, ignore it if it goes to the instance folder
         if (dirInfo.isSymLink()) {
             QFileInfo targetInfo(dirInfo.symLinkTarget());
             QFileInfo instDirInfo(m_instDir);
             if (targetInfo.canonicalPath() == instDirInfo.canonicalFilePath()) {
-                qDebug() << "Ignoring symlink" << subDir << "that leads into the instances folder";
                 continue;
             }
         }
-        auto id = dirInfo.fileName();
-        out.append(id);
-        qInfo() << "Found instance ID" << id;
+        out.append(dirInfo.fileName());
     }
+
+    // 2. Scan synced instances directory
+    QDir instDirObj(m_instDir);
+    instDirObj.cdUp();
+    QString syncedInstDir = instDirObj.absoluteFilePath("synced_instances");
+    QDir().mkpath(syncedInstDir);
+    
+    QDirIterator syncedIter(syncedInstDir, QDir::Dirs | QDir::NoDot | QDir::NoDotDot | QDir::Readable | QDir::Hidden, QDirIterator::FollowSymlinks);
+    while (syncedIter.hasNext()) {
+        QString subDir = syncedIter.next();
+        QFileInfo dirInfo(subDir);
+        if (!QFileInfo(FS::PathCombine(subDir, "instance.cfg")).exists())
+            continue;
+        out.append(dirInfo.fileName());
+    }
+
     instanceSet = QSet<QString>(out.begin(), out.end());
     m_instancesProbed = true;
     return out;
@@ -664,6 +678,16 @@ std::unique_ptr<BaseInstance> InstanceList::loadInstance(const InstanceId& id)
     }
 
     auto instanceRoot = FS::PathCombine(m_instDir, id);
+    if (!QFileInfo(FS::PathCombine(instanceRoot, "instance.cfg")).exists()) {
+        QDir instDirObj(m_instDir);
+        instDirObj.cdUp();
+        QString syncedInstDir = instDirObj.absoluteFilePath("synced_instances");
+        QString altRoot = FS::PathCombine(syncedInstDir, id);
+        if (QFileInfo(FS::PathCombine(altRoot, "instance.cfg")).exists()) {
+            instanceRoot = altRoot;
+        }
+    }
+
     auto instanceSettings = std::make_unique<INISettingsObject>(FS::PathCombine(instanceRoot, "instance.cfg"));
     std::unique_ptr<BaseInstance> inst;
 
@@ -905,9 +929,10 @@ class InstanceStaging : public Task {
     const unsigned maxBackoff = 16;
 
    public:
-    InstanceStaging(InstanceList* parent, InstanceTask* child, SettingsObject* settings) : m_parent(parent), backoff(minBackoff, maxBackoff)
+    InstanceStaging(InstanceList* parent, InstanceTask* child, SettingsObject* settings, const QString& customInstDir = QString())
+        : m_parent(parent), m_customInstDir(customInstDir), backoff(minBackoff, maxBackoff)
     {
-        m_stagingPath = parent->getStagedInstancePath();
+        m_stagingPath = parent->getStagedInstancePath(customInstDir);
 
         m_child.reset(child);
 
@@ -955,7 +980,7 @@ class InstanceStaging : public Task {
     void childSucceeded()
     {
         unsigned sleepTime = backoff();
-        if (m_parent->commitStagedInstance(m_stagingPath, *m_child, m_child->group(), *m_child)) {
+        if (m_parent->commitStagedInstance(m_stagingPath, *m_child, m_child->group(), *m_child, m_customInstDir)) {
             m_backoffTimer.stop();
             emitSucceeded();
             return;
@@ -985,6 +1010,7 @@ class InstanceStaging : public Task {
 
    private:
     InstanceList* m_parent;
+    QString m_customInstDir;
     /*
      * WHY: the whole reason why this uses an exponential backoff retry scheme is antivirus on Windows.
      * Basically, it starts messing things up while the launcher is extracting/creating instances
@@ -996,14 +1022,15 @@ class InstanceStaging : public Task {
     QTimer m_backoffTimer;
 };
 
-Task* InstanceList::wrapInstanceTask(InstanceTask* task)
+Task* InstanceList::wrapInstanceTask(InstanceTask* task, const QString& customInstDir)
 {
-    return new InstanceStaging(this, task, m_globalSettings);
+    return new InstanceStaging(this, task, m_globalSettings, customInstDir);
 }
 
-QString InstanceList::getStagedInstancePath()
+QString InstanceList::getStagedInstancePath(const QString& customInstDir)
 {
-    const QString tempRoot = FS::PathCombine(m_instDir, ".tmp");
+    QString targetDir = customInstDir.isEmpty() ? m_instDir : customInstDir;
+    const QString tempRoot = FS::PathCombine(targetDir, ".tmp");
 
     QString result;
     int tries = 0;
@@ -1027,8 +1054,11 @@ QString InstanceList::getStagedInstancePath()
 bool InstanceList::commitStagedInstance(const QString& path,
                                         const InstanceName& instanceName,
                                         QString groupName,
-                                        const InstanceTask& commiting)
+                                        const InstanceTask& commiting,
+                                        const QString& customInstDir)
 {
+    QString targetDir = customInstDir.isEmpty() ? m_instDir : customInstDir;
+
     if (groupName.isEmpty() && !groupName.isNull())
         groupName = QString();
 
@@ -1039,14 +1069,18 @@ bool InstanceList::commitStagedInstance(const QString& path,
     if (should_override) {
         instID = commiting.originalInstanceID();
     } else {
-        instID = FS::DirNameFromString(instanceName.modifiedName(), m_instDir);
+        QString baseName = instanceName.modifiedName();
+        if (!customInstDir.isEmpty()) {
+            baseName += " Synced";
+        }
+        instID = FS::DirNameFromString(baseName, targetDir);
     }
 
     Q_ASSERT(!instID.isEmpty());
 
     {
-        WatchLock lock(m_watcher, m_instDir);
-        QString destination = FS::PathCombine(m_instDir, instID);
+        WatchLock lock(m_watcher, targetDir);
+        QString destination = FS::PathCombine(targetDir, instID);
 
         if (should_override) {
             if (!FS::overrideFolder(destination, path)) {
@@ -1064,6 +1098,7 @@ bool InstanceList::commitStagedInstance(const QString& path,
         }
 
         instanceSet.insert(instID);
+        loadList();
 
         emit instancesChanged();
         emit instanceSelectRequest(instID);

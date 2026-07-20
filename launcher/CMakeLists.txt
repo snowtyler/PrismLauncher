@@ -1,5 +1,7 @@
 project(application)
 
+add_compile_definitions(TOML_HEADER_ONLY=1)
+
 ################################ FILES ################################
 
 ######## Sources and headers ########
@@ -49,6 +51,12 @@ set(CORE_SOURCES
     InstanceCopyTask.cpp
     InstanceImportTask.h
     InstanceImportTask.cpp
+
+    # Synced instance tasks
+    tasks/SyncedInstanceUpdateTask.h
+    tasks/SyncedInstanceUpdateTask.cpp
+    tasks/SyncedInstanceUploadTask.h
+    tasks/SyncedInstanceUploadTask.cpp
 
     # Resource downloading task
     ResourceDownloadTask.h
@@ -133,6 +141,8 @@ set(NET_SOURCES
     net/NetUtils.h
     net/PasteUpload.cpp
     net/PasteUpload.h
+    net/R2Signer.h
+    net/R2Signer.cpp
     net/Sink.h
     net/Validator.h
     net/Upload.cpp
@@ -832,6 +842,10 @@ SET(LAUNCHER_SOURCES
     ui/GuiUtil.cpp
     ui/MainWindow.h
     ui/MainWindow.cpp
+    ui/widgets/ModpackCard.h
+    ui/widgets/ModpackCard.cpp
+    ui/widgets/ModpackDashboard.h
+    ui/widgets/ModpackDashboard.cpp
     ui/InstanceWindow.h
     ui/InstanceWindow.cpp
     ui/ViewLogWindow.h
@@ -1097,6 +1111,8 @@ SET(LAUNCHER_SOURCES
     ui/dialogs/InstallLoaderDialog.h
     ui/dialogs/ChooseOfflineNameDialog.cpp
     ui/dialogs/ChooseOfflineNameDialog.h
+    ui/dialogs/UploadConfirmDialog.cpp
+    ui/dialogs/UploadConfirmDialog.h
 
     ui/dialogs/skins/SkinManageDialog.cpp
     ui/dialogs/skins/SkinManageDialog.h
@@ -1268,9 +1284,11 @@ else()
 endif()
 
 if(TARGET PkgConfig::tomlplusplus)
-    target_link_libraries(Launcher_logic PkgConfig::tomlplusplus)
-else()
-    target_link_libraries(Launcher_logic tomlplusplus::tomlplusplus)
+    get_target_property(TOML_INCLUDES PkgConfig::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
+    target_include_directories(Launcher_logic PRIVATE ${TOML_INCLUDES})
+elseif(TARGET tomlplusplus::tomlplusplus)
+    get_target_property(TOML_INCLUDES tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
+    target_include_directories(Launcher_logic PRIVATE ${TOML_INCLUDES})
 endif()
 if(TARGET PkgConfig::libarchive)
     target_link_libraries(Launcher_logic PkgConfig::libarchive)

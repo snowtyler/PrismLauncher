@@ -49,18 +49,18 @@
 #include <QSettings>
 #include <QStandardPaths>
 
-bool isSchemeHandlerRegistered()
+bool isSchemeHandlerRegistered(const QString& scheme)
 {
 #ifdef Q_OS_LINUX
     QProcess process;
-    process.start("xdg-mime", { "query", "default", "x-scheme-handler/" + BuildConfig.LAUNCHER_APP_BINARY_NAME });
+    process.start("xdg-mime", { "query", "default", "x-scheme-handler/" + scheme });
     process.waitForFinished();
     QString output = process.readAllStandardOutput().trimmed();
 
     return output.contains(APPLICATION->desktopFileName());
 
 #elif defined(Q_OS_WIN)
-    QString regPath = QString("HKEY_CURRENT_USER\\Software\\Classes\\%1").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
+    QString regPath = QString("HKEY_CURRENT_USER\\Software\\Classes\\%1").arg(scheme);
     QSettings settings(regPath, QSettings::NativeFormat);
 
     const QString registeredRunCommand = settings.value("shell/open/command/.").toString().replace("\\", "/");
@@ -73,7 +73,8 @@ class CustomOAuthOobReplyHandler : public QOAuthOobReplyHandler {
     Q_OBJECT
 
    public:
-    explicit CustomOAuthOobReplyHandler(QObject* parent = nullptr) : QOAuthOobReplyHandler(parent)
+    explicit CustomOAuthOobReplyHandler(QString callbackUrl, QObject* parent = nullptr)
+        : QOAuthOobReplyHandler(parent), m_callbackUrl(std::move(callbackUrl))
     {
         connect(APPLICATION, &Application::oauthReplyRecieved, this, &QOAuthOobReplyHandler::callbackReceived);
     }
@@ -81,7 +82,7 @@ class CustomOAuthOobReplyHandler : public QOAuthOobReplyHandler {
     {
         disconnect(APPLICATION, &Application::oauthReplyRecieved, this, &QOAuthOobReplyHandler::callbackReceived);
     }
-    QString callback() const override { return BuildConfig.LAUNCHER_APP_BINARY_NAME + "://oauth/microsoft"; }
+    QString callback() const override { return m_callbackUrl; }
 
    protected:
     void networkReplyFinished(QNetworkReply* reply) override
@@ -92,6 +93,9 @@ class CustomOAuthOobReplyHandler : public QOAuthOobReplyHandler {
 
         QOAuthOobReplyHandler::networkReplyFinished(reply);
     }
+
+   private:
+    QString m_callbackUrl;
 };
 
 class LoggingOAuthHttpServerReplyHandler final : public QOAuthHttpServerReplyHandler {
@@ -114,7 +118,8 @@ class LoggingOAuthHttpServerReplyHandler final : public QOAuthHttpServerReplyHan
 MSAStep::MSAStep(AccountData* data, bool silent) : AuthStep(data), m_silent(silent)
 {
     m_clientId = APPLICATION->getMSAClientID();
-    if (QCoreApplication::applicationFilePath().startsWith("/tmp/.mount_") || APPLICATION->isPortable() || !isSchemeHandlerRegistered())
+    QString scheme = (m_clientId == "c36a9fb6-4f2a-41ff-90bd-ae7cc92031eb") ? "prismlauncher" : BuildConfig.LAUNCHER_APP_BINARY_NAME;
+    if (QCoreApplication::applicationFilePath().startsWith("/tmp/.mount_") || APPLICATION->isPortable() || !isSchemeHandlerRegistered(scheme))
 
     {
         auto replyHandler = new LoggingOAuthHttpServerReplyHandler(this);
@@ -130,7 +135,7 @@ MSAStep::MSAStep(AccountData* data, bool silent) : AuthStep(data), m_silent(sile
                                           .arg(BuildConfig.LOGIN_CALLBACK_URL));
         m_oauth2.setReplyHandler(replyHandler);
     } else {
-        m_oauth2.setReplyHandler(new CustomOAuthOobReplyHandler(this));
+        m_oauth2.setReplyHandler(new CustomOAuthOobReplyHandler(scheme + "://oauth/microsoft", this));
     }
     m_oauth2.setAuthorizationUrl(QUrl("https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"));
     m_oauth2.setAccessTokenUrl(QUrl("https://login.microsoftonline.com/consumers/oauth2/v2.0/token"));

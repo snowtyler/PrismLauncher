@@ -62,3 +62,5 @@ flatbuild
 
 # Snap
 *.snap
+PrismLauncher-Setup.exe
+/NSISPlugins

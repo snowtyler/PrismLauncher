@@ -149,6 +149,9 @@ void Resource::updateIssues(const BaseInstance* inst)
     }
 
     auto* profile = mcInst->getPackProfile();
+    if (profile == nullptr) {
+        return;
+    }
     QString mcVersion = profile->getComponentVersion("net.minecraft");
 
     if (!m_metadata->mcVersions.empty() && !m_metadata->mcVersions.contains(mcVersion)) {

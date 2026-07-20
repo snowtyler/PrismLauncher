@@ -39,6 +39,8 @@
 #include "launch/steps/PrintServers.h"
 #include "minecraft/auth/AccountData.h"
 #include "minecraft/auth/AccountList.h"
+#include "tasks/SyncedInstanceUpdateTask.h"
+#include "launch/TaskStepWrapper.h"
 
 #include "net/NetUtils.h"
 #include "ui/InstanceWindow.h"
@@ -380,6 +382,11 @@ void LaunchController::launchInstance()
     if (!m_launcher) {
         emitFailed(tr("Couldn't instantiate a launcher."));
         return;
+    }
+
+    if (m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        auto updateTask = makeShared<SyncedInstanceUpdateTask>(m_instance);
+        m_launcher->prependStep(makeShared<TaskStepWrapper>(m_launcher, updateTask));
     }
 
     const auto* console = qobject_cast<InstanceWindow*>(m_parentWidget);

@@ -34,6 +34,11 @@
 #include "Version.h"
 #include "modplatform/ModIndex.h"
 
+#ifdef TOML_HEADER_ONLY
+#undef TOML_HEADER_ONLY
+#endif
+#define TOML_HEADER_ONLY 1
+
 #include <toml++/toml.h>
 
 namespace Packwiz {
@@ -73,7 +78,7 @@ auto indexFileName(const QString& modSlug) -> QString
 }
 
 // Helper functions for extracting data from the TOML file
-auto stringEntry(toml::table table, const QString& entryName) -> QString
+auto stringEntry(const toml::table& table, const QString& entryName) -> QString
 {
     auto* node = table.get(StringUtils::toStdString(entryName));
     if (!node) {
@@ -84,7 +89,7 @@ auto stringEntry(toml::table table, const QString& entryName) -> QString
     return node->value_or("");
 }
 
-auto intEntry(toml::table table, const QString& entryName) -> int
+auto intEntry(const toml::table& table, const QString& entryName) -> int
 {
     auto* node = table.get(StringUtils::toStdString(entryName));
     if (!node) {

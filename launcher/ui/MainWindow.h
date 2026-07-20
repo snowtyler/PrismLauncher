@@ -53,6 +53,9 @@ class LaunchController;
 class NewsChecker;
 class QToolButton;
 class InstanceProxyModel;
+class QTabBar;
+class QStackedWidget;
+class ModpackDashboard;
 class LabeledToolButton;
 class QLabel;
 class MinecraftLauncher;
@@ -236,6 +239,9 @@ class MainWindow : public QMainWindow {
     Ui::MainWindow* ui;
     // these are managed by Qt's memory management model!
     InstanceView* view = nullptr;
+    ModpackDashboard* dashboard = nullptr;
+    QTabBar* viewTabs = nullptr;
+    QStackedWidget* stackedWidget = nullptr;
     InstanceProxyModel* proxymodel = nullptr;
     QToolButton* newsLabel = nullptr;
     QLabel* m_statusLeft = nullptr;

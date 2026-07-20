@@ -28,6 +28,7 @@ class InstanceProxyModel : public QSortFilterProxyModel {
     QVariant data(const QModelIndex& index, int role) const override;
     bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
     bool subSortLessThan(const QModelIndex& left, const QModelIndex& right) const;
+    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
 
    private:
     QCollator m_naturalSort;

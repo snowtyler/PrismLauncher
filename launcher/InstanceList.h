@@ -122,13 +122,13 @@ class InstanceList : public QAbstractListModel {
     void deleteInstance(const InstanceId& id);
 
     // Wrap an instance creation task in some more task machinery and make it ready to be used
-    Task* wrapInstanceTask(InstanceTask* task);
+    Task* wrapInstanceTask(InstanceTask* task, const QString& customInstDir = QString());
 
     /**
      * Create a new empty staging area for instance creation and @return a path/key top commit it later.
      * Used by instance manipulation tasks.
      */
-    QString getStagedInstancePath();
+    QString getStagedInstancePath(const QString& customInstDir = QString());
 
     /**
      * Commit the staging area given by @keyPath to the provider - used when creation succeeds.
@@ -136,7 +136,7 @@ class InstanceList : public QAbstractListModel {
      * should_override is used when another similar instance already exists, and we want to override it
      * - for instance, when updating it.
      */
-    bool commitStagedInstance(const QString& keyPath, const InstanceName& instanceName, QString groupName, const InstanceTask&);
+    bool commitStagedInstance(const QString& keyPath, const InstanceName& instanceName, QString groupName, const InstanceTask&, const QString& customInstDir = QString());
 
     /**
      * Destroy a previously created staging area given by @keyPath - used when creation fails.

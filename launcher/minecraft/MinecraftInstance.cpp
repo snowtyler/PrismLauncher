@@ -182,6 +182,10 @@ void MinecraftInstance::loadSpecificSettings()
     if (isSpecificSettingsLoaded())
         return;
 
+    m_settings->registerSetting("IsSyncedInstance", false);
+    m_settings->registerSetting("SyncShortcode", "");
+    m_settings->registerSetting("SyncVersion", "");
+
     // Java Settings
     auto locationOverride = m_settings->registerSetting("OverrideJavaLocation", false);
     auto argsOverride = m_settings->registerSetting("OverrideJavaArgs", false);

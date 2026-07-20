@@ -1,6 +1,12 @@
 #include "LocalModParseTask.h"
 
 #include <qdcss.h>
+
+#ifdef TOML_HEADER_ONLY
+#undef TOML_HEADER_ONLY
+#endif
+#define TOML_HEADER_ONLY 1
+
 #include <toml++/toml.h>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -147,36 +153,19 @@ ModDetails ReadMCModTOML(QByteArray contents)
     tomlData = result.table();
 #endif
 
-    // array defined by [[mods]]
-    auto tomlModsArr = tomlData["mods"].as_array();
-    if (!tomlModsArr) {
-        qWarning() << "Corrupted mods.toml? Couldn't find [[mods]] array!";
-        return {};
-    }
-
-    // we only really care about the first element, since multiple mods in one file is not supported by us at the moment
-    auto tomlModsTable0 = tomlModsArr->get(0);
-    if (!tomlModsTable0) {
-        qWarning() << "Corrupted mods.toml? [[mods]] didn't have an element at index 0!";
-        return {};
-    }
-    auto modsTable = tomlModsTable0->as_table();
-    if (!modsTable) {
-        qWarning() << "Corrupted mods.toml? [[mods]] was not a table!";
-        return {};
-    }
+    auto modsTable = tomlData["mods"][0];
 
     // mandatory properties - always in [[mods]]
-    if (auto modIdDatum = (*modsTable)["modId"].as_string()) {
+    if (auto modIdDatum = modsTable["modId"].as_string()) {
         details.mod_id = QString::fromStdString(modIdDatum->get());
     }
-    if (auto versionDatum = (*modsTable)["version"].as_string()) {
+    if (auto versionDatum = modsTable["version"].as_string()) {
         details.version = QString::fromStdString(versionDatum->get());
     }
-    if (auto displayNameDatum = (*modsTable)["displayName"].as_string()) {
+    if (auto displayNameDatum = modsTable["displayName"].as_string()) {
         details.name = QString::fromStdString(displayNameDatum->get());
     }
-    if (auto descriptionDatum = (*modsTable)["description"].as_string()) {
+    if (auto descriptionDatum = modsTable["description"].as_string()) {
         details.description = QString::fromStdString(descriptionDatum->get());
     }
 
@@ -184,7 +173,7 @@ ModDetails ReadMCModTOML(QByteArray contents)
     QString authors = "";
     if (auto authorsDatum = tomlData["authors"].as_string()) {
         authors = QString::fromStdString(authorsDatum->get());
-    } else if (auto authorsDatumMods = (*modsTable)["authors"].as_string()) {
+    } else if (auto authorsDatumMods = modsTable["authors"].as_string()) {
         authors = QString::fromStdString(authorsDatumMods->get());
     }
     if (!authors.isEmpty()) {
@@ -194,7 +183,7 @@ ModDetails ReadMCModTOML(QByteArray contents)
     QString homeurl = "";
     if (auto homeurlDatum = tomlData["displayURL"].as_string()) {
         homeurl = QString::fromStdString(homeurlDatum->get());
-    } else if (auto homeurlDatumMods = (*modsTable)["displayURL"].as_string()) {
+    } else if (auto homeurlDatumMods = modsTable["displayURL"].as_string()) {
         homeurl = QString::fromStdString(homeurlDatumMods->get());
     }
     // fix up url.
@@ -206,7 +195,7 @@ ModDetails ReadMCModTOML(QByteArray contents)
     QString issueTrackerURL = "";
     if (auto issueTrackerURLDatum = tomlData["issueTrackerURL"].as_string()) {
         issueTrackerURL = QString::fromStdString(issueTrackerURLDatum->get());
-    } else if (auto issueTrackerURLDatumMods = (*modsTable)["issueTrackerURL"].as_string()) {
+    } else if (auto issueTrackerURLDatumMods = modsTable["issueTrackerURL"].as_string()) {
         issueTrackerURL = QString::fromStdString(issueTrackerURLDatumMods->get());
     }
     details.issue_tracker = issueTrackerURL;
@@ -214,7 +203,7 @@ ModDetails ReadMCModTOML(QByteArray contents)
     QString license = "";
     if (auto licenseDatum = tomlData["license"].as_string()) {
         license = QString::fromStdString(licenseDatum->get());
-    } else if (auto licenseDatumMods = (*modsTable)["license"].as_string()) {
+    } else if (auto licenseDatumMods = modsTable["license"].as_string()) {
         license = QString::fromStdString(licenseDatumMods->get());
     }
     if (!license.isEmpty())
@@ -223,7 +212,7 @@ ModDetails ReadMCModTOML(QByteArray contents)
     QString logoFile = "";
     if (auto logoFileDatum = tomlData["logoFile"].as_string()) {
         logoFile = QString::fromStdString(logoFileDatum->get());
-    } else if (auto logoFileDatumMods = (*modsTable)["logoFile"].as_string()) {
+    } else if (auto logoFileDatumMods = modsTable["logoFile"].as_string()) {
         logoFile = QString::fromStdString(logoFileDatumMods->get());
     }
     details.icon_file = logoFile;
@@ -233,24 +222,21 @@ ModDetails ReadMCModTOML(QByteArray contents)
         if (!dependencies) {
             return;
         }
-        auto isNeoForgeDep = [](toml::table* t) {
-            auto type = (*t)["type"].as_string();
+        auto isNeoForgeDep = [](toml::node_view<const toml::node> t) {
+            auto type = t["type"].as_string();
             return type && type->get() == "required";
         };
-        auto isForgeDep = [](toml::table* t) {
-            auto mandatory = (*t)["mandatory"].as_boolean();
+        auto isForgeDep = [](toml::node_view<const toml::node> t) {
+            auto mandatory = t["mandatory"].as_boolean();
             return mandatory && mandatory->get();
         };
-        for (auto& dep : *dependencies) {
-            auto dep_table = dep.as_table();
-            if (!dep_table) {
-                continue;
-            }
-            auto modId = (*dep_table)["modId"].as_string();
+        for (auto&& dep : *dependencies) {
+            toml::node_view<const toml::node> depView(dep);
+            auto modId = depView["modId"].as_string();
             if (!modId || ignoreModIds.contains(QString::fromStdString(modId->get()))) {
                 continue;
             }
-            if (isNeoForgeDep(dep_table) || isForgeDep(dep_table)) {
+            if (isNeoForgeDep(depView) || isForgeDep(depView)) {
                 details.dependencies.append(QString::fromStdString(modId->get()));
             }
         }
@@ -267,8 +253,8 @@ ModDetails ReadMCModTOML(QByteArray contents)
                     expectedKey = it->first;
                 }
             }
-            if ((array = (*depTable)[expectedKey].as_array())) {
-                parseDep(array);
+            if (auto subArray = depValue[expectedKey].as_array()) {
+                parseDep(subArray);
             }
         }
     }

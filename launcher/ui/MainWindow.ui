@@ -49,17 +49,16 @@
    <attribute name="toolBarBreak">
     <bool>false</bool>
    </attribute>
-   <addaction name="actionAddInstance"/>
-   <addaction name="separator"/>
    <addaction name="actionFoldersButton"/>
    <addaction name="actionSettings"/>
-   <addaction name="actionHelpButton"/>
    <addaction name="actionCheckUpdate"/>
    <addaction name="separator"/>
-   <addaction name="actionCAT"/>
    <addaction name="actionAccountsButton"/>
   </widget>
   <widget class="QToolBar" name="newsToolBar">
+   <property name="visible">
+    <bool>false</bool>
+   </property>
    <property name="windowTitle">
     <string>News Toolbar</string>
    </property>
@@ -87,6 +86,9 @@
    <addaction name="actionMoreNews"/>
   </widget>
   <widget class="WideBar" name="instanceToolBar">
+   <property name="visible">
+    <bool>false</bool>
+   </property>
    <property name="windowTitle">
     <string>Instance Toolbar</string>
    </property>
