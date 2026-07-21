@@ -173,10 +173,23 @@ VersionPage::VersionPage(MinecraftInstance* inst, QWidget* parent) : QMainWindow
     preselect(0);
     connect(ui->packageView, &ModListView::customContextMenuRequested, this, &VersionPage::showContextMenu);
     connect(ui->packageView, &QAbstractItemView::activated, this, [this](const QModelIndex& index) {
+        if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+            return;
+        }
         auto component = m_profile->getComponent(index.row());
         component->setEnabled(!component->isEnabled());
     });
     connect(ui->filterEdit, &QLineEdit::textChanged, this, &VersionPage::onFilterTextChanged);
+
+    bool isSynced = m_inst->settings()->get("IsSyncedInstance").toBool();
+    if (isSynced) {
+        ui->actionAdd_to_Minecraft_jar->setEnabled(false);
+        ui->actionReplace_Minecraft_jar->setEnabled(false);
+        ui->actionImport_Components->setEnabled(false);
+        ui->actionAdd_Agents->setEnabled(false);
+        ui->actionInstall_Loader->setEnabled(false);
+        ui->actionAdd_Empty->setEnabled(false);
+    }
 }
 
 VersionPage::~VersionPage()
@@ -237,13 +250,14 @@ void VersionPage::updateButtons(int row)
     if (row == -1)
         row = currentRow();
     auto patch = m_profile->getComponent(row);
-    ui->actionRemove->setEnabled(patch && patch->isRemovable());
-    ui->actionMove_down->setEnabled(patch && patch->isMoveable());
-    ui->actionMove_up->setEnabled(patch && patch->isMoveable());
-    ui->actionChange_version->setEnabled(patch && patch->isVersionChangeable(false));
-    ui->actionEdit->setEnabled(patch && patch->isCustom());
-    ui->actionCustomize->setEnabled(patch && patch->isCustomizable());
-    ui->actionRevert->setEnabled(patch && patch->isRevertible());
+    bool isSynced = m_inst->settings()->get("IsSyncedInstance").toBool();
+    ui->actionRemove->setEnabled(!isSynced && patch && patch->isRemovable());
+    ui->actionMove_down->setEnabled(!isSynced && patch && patch->isMoveable());
+    ui->actionMove_up->setEnabled(!isSynced && patch && patch->isMoveable());
+    ui->actionChange_version->setEnabled(!isSynced && patch && patch->isVersionChangeable(false));
+    ui->actionEdit->setEnabled(!isSynced && patch && patch->isCustom());
+    ui->actionCustomize->setEnabled(!isSynced && patch && patch->isCustomizable());
+    ui->actionRevert->setEnabled(!isSynced && patch && patch->isRevertible());
 }
 
 bool VersionPage::reloadPackProfile()
@@ -271,6 +285,9 @@ void VersionPage::on_actionReload_triggered()
 
 void VersionPage::on_actionRemove_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (!ui->packageView->currentIndex().isValid()) {
         return;
     }
@@ -299,6 +316,9 @@ void VersionPage::on_actionRemove_triggered()
 
 void VersionPage::on_actionAdd_to_Minecraft_jar_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto list = GuiUtil::BrowseForFiles("jarmod", tr("Select jar mods"), tr("Minecraft.jar mods") + " (*.zip *.jar)",
                                         APPLICATION->settings()->get("CentralModsDir").toString(), this->parentWidget());
     if (!list.empty()) {
@@ -309,6 +329,9 @@ void VersionPage::on_actionAdd_to_Minecraft_jar_triggered()
 
 void VersionPage::on_actionReplace_Minecraft_jar_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto jarPath = GuiUtil::BrowseForFile("jar", tr("Select jar"), tr("Minecraft.jar replacement") + " (*.jar)",
                                           APPLICATION->settings()->get("CentralModsDir").toString(), this->parentWidget());
     if (!jarPath.isEmpty()) {
@@ -319,6 +342,9 @@ void VersionPage::on_actionReplace_Minecraft_jar_triggered()
 
 void VersionPage::on_actionImport_Components_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     QStringList list = GuiUtil::BrowseForFiles("component", tr("Select components"), tr("Components") + " (*.json)",
                                                APPLICATION->settings()->get("CentralModsDir").toString(), this->parentWidget());
 
@@ -334,6 +360,9 @@ void VersionPage::on_actionImport_Components_triggered()
 
 void VersionPage::on_actionAdd_Agents_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     QStringList list = GuiUtil::BrowseForFiles("agent", tr("Select agents"), tr("Java agents") + " (*.jar)",
                                                APPLICATION->settings()->get("CentralModsDir").toString(), this->parentWidget());
 
@@ -345,6 +374,9 @@ void VersionPage::on_actionAdd_Agents_triggered()
 
 void VersionPage::on_actionMove_up_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     try {
         m_profile->move(currentRow(), PackProfile::MoveUp);
     } catch (const Exception& e) {
@@ -355,6 +387,9 @@ void VersionPage::on_actionMove_up_triggered()
 
 void VersionPage::on_actionMove_down_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     try {
         m_profile->move(currentRow(), PackProfile::MoveDown);
     } catch (const Exception& e) {
@@ -365,6 +400,9 @@ void VersionPage::on_actionMove_down_triggered()
 
 void VersionPage::on_actionChange_version_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto versionRow = currentRow();
     if (versionRow == -1) {
         return;
@@ -449,6 +487,9 @@ void VersionPage::on_actionDownload_All_triggered()
 
 void VersionPage::on_actionInstall_Loader_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     InstallLoaderDialog dialog(m_inst->getPackProfile(), QString(), this);
     dialog.exec();
     m_container->refreshContainer();
@@ -456,6 +497,9 @@ void VersionPage::on_actionInstall_Loader_triggered()
 
 void VersionPage::on_actionAdd_Empty_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     NewComponentDialog compdialog(QString(), QString(), this);
     QStringList blacklist;
     for (int i = 0; i < m_profile->rowCount(); i++) {
@@ -526,6 +570,9 @@ int VersionPage::currentRow()
 
 void VersionPage::on_actionCustomize_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto version = currentRow();
     if (version == -1) {
         return;
@@ -544,6 +591,9 @@ void VersionPage::on_actionCustomize_triggered()
 
 void VersionPage::on_actionEdit_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto version = current();
     if (!version) {
         return;
@@ -558,6 +608,9 @@ void VersionPage::on_actionEdit_triggered()
 
 void VersionPage::on_actionRevert_triggered()
 {
+    if (m_inst->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto version = currentRow();
     if (version == -1) {
         return;

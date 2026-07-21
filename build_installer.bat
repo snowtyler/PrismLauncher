@@ -38,7 +38,7 @@ call "%VS_DEV_CMD%" -arch=x64 -host_arch=x64
 :: Add CMake and Ninja from VS to PATH in case they are not added
 set "CMAKE_DIR=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
 set "NINJA_DIR=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja"
-set "PATH=%CMAKE_DIR%;%NINJA_DIR%;%PATH%"
+set "PATH=%CMAKE_DIR%;%NINJA_DIR%;C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;%PATH%"
 
 :: Reconfigure project with Updater enabled and Qt6 prefix path
 echo [INFO] Configuring CMake project...
@@ -69,34 +69,10 @@ if %ERRORLEVEL% neq 0 (
 
 :: Setup NSIS plugins (NScurl is required by win_install.nsi)
 echo [INFO] Downloading and preparing NSIS plugins...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "^
-    if (-not (Test-Path 'NSISPlugins')) { ^
-        New-Item -Name 'NSISPlugins' -ItemType 'Directory' ^| Out-Null; ^
-    }; ^
-    if (-not (Test-Path 'NSISPlugins\NScurl.zip')) { ^
-        Write-Host 'Downloading NSCurl plugin...'; ^
-        Invoke-WebRequest 'https://github.com/negrutiu/nsis-nscurl/releases/download/v24.9.26.122/NScurl.zip' -OutFile 'NSISPlugins\NScurl.zip'; ^
-    }; ^
-    if (-not (Test-Path 'NSISPlugins\NScurl')) { ^
-        Write-Host 'Extracting NSCurl plugin...'; ^
-        Expand-Archive -Path 'NSISPlugins\NScurl.zip' -DestinationPath 'NSISPlugins\NScurl'; ^
-    }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\download_plugins.ps1"
 
 :: Detect makensis
 set "MAKENSIS_EXE=makensis.exe"
-where makensis.exe >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    if exist "C:\Program Files (x86)\NSIS\makensis.exe" (
-        set "MAKENSIS_EXE=C:\Program Files (x86)\NSIS\makensis.exe"
-    ) else if exist "C:\Program Files\NSIS\makensis.exe" (
-        set "MAKENSIS_EXE=C:\Program Files\NSIS\makensis.exe"
-    ) else (
-        echo [ERROR] NSIS (makensis.exe) not found.
-        echo Please install NSIS from https://nsis.sourceforge.io/
-        exit /b 1
-    )
-)
-
 echo [INFO] Using NSIS compiler at: %MAKENSIS_EXE%
 
 :: Compile installer

@@ -110,6 +110,7 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
     ui->actionsToolbar->insertActionAfter(ui->actionViewHomepage, ui->actionExportMetadata);
 
     ui->actionsToolbar->insertActionAfter(ui->actionViewFolder, ui->actionViewConfigs);
+    updateActions();
 }
 
 bool ModFolderPage::shouldDisplay() const
@@ -162,6 +163,9 @@ void ModFolderPage::removeItems(const QItemSelection& selection)
 
 void ModFolderPage::downloadMods()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -222,6 +226,9 @@ void ModFolderPage::downloadDialogFinished(int result)
 
 void ModFolderPage::updateMods(bool includeDeps)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -309,6 +316,9 @@ void ModFolderPage::updateMods(bool includeDeps)
 
 void ModFolderPage::deleteModMetadata()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedMods(selection).length();
     if (selectionCount == 0) {
@@ -332,6 +342,9 @@ void ModFolderPage::deleteModMetadata()
 
 void ModFolderPage::changeModVersion()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }

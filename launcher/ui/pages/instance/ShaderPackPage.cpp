@@ -74,10 +74,14 @@ ShaderPackPage::ShaderPackPage(MinecraftInstance* instance, ShaderPackFolderMode
     ui->actionChangeVersion->setToolTip(tr("Change a shader pack's version."));
     connect(ui->actionChangeVersion, &QAction::triggered, this, &ShaderPackPage::changeShaderPackVersion);
     ui->actionsToolbar->insertActionAfter(ui->actionUpdateItem, ui->actionChangeVersion);
+    updateActions();
 }
 
 void ShaderPackPage::downloadShaderPack()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -131,6 +135,9 @@ void ShaderPackPage::downloadDialogFinished(int result)
 
 void ShaderPackPage::updateShaderPacks()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -212,6 +219,9 @@ void ShaderPackPage::updateShaderPacks()
 
 void ShaderPackPage::deleteShaderPackMetadata()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedShaderPacks(selection).length();
     if (selectionCount == 0) {
@@ -235,6 +245,9 @@ void ShaderPackPage::deleteShaderPackMetadata()
 
 void ShaderPackPage::changeShaderPackVersion()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }

@@ -100,6 +100,9 @@ bool ResourceFolderModel::stopWatching(const QStringList& paths)
 
 bool ResourceFolderModel::installResource(QString originalPath)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
     // NOTE: fix for GH-1178: remove trailing slash to avoid issues with using the empty result of QFileInfo::fileName
     originalPath = FS::NormalizePath(originalPath);
     QFileInfo fileInfo(originalPath);
@@ -217,6 +220,9 @@ void ResourceFolderModel::installResourceWithFlameMetadata(const QString& path, 
 
 bool ResourceFolderModel::uninstallResource(const QString& fileName, bool preserveMetadata)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
     for (auto& resource : m_resources) {
         auto resourceFileInfo = resource->fileinfo();
         auto resourceFileName = resource->fileinfo().fileName();
@@ -237,6 +243,9 @@ bool ResourceFolderModel::uninstallResource(const QString& fileName, bool preser
 
 bool ResourceFolderModel::deleteResources(const QModelIndexList& indexes)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
     if (indexes.isEmpty()) {
         return true;
     }
@@ -275,6 +284,9 @@ void ResourceFolderModel::deleteMetadata(const QModelIndexList& indexes)
 
 bool ResourceFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAction action)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
     if (m_instance != nullptr && m_instance->isRunning()) {
         auto response =
             CustomMessageBox::selectable(nullptr, tr("Confirm toggle"),
@@ -463,6 +475,9 @@ Qt::DropActions ResourceFolderModel::supportedDropActions() const
 Qt::ItemFlags ResourceFolderModel::flags(const QModelIndex& index) const
 {
     Qt::ItemFlags defaultFlags = QAbstractListModel::flags(index);
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return defaultFlags;
+    }
     auto flags = defaultFlags | Qt::ItemIsDropEnabled;
     if (index.isValid()) {
         flags |= Qt::ItemIsUserCheckable;
@@ -483,6 +498,9 @@ bool ResourceFolderModel::dropMimeData(const QMimeData* data,
                                        int /*column*/,
                                        const QModelIndex& /*parent*/)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
     if (action == Qt::IgnoreAction) {
         return true;
     }
@@ -605,6 +623,9 @@ QVariant ResourceFolderModel::data(const QModelIndex& index, int role) const
 
 bool ResourceFolderModel::setData(const QModelIndex& index, [[maybe_unused]] const QVariant& value, int role)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
     int row = index.row();
     if (row < 0 || row >= rowCount(index.parent()) || !index.isValid()) {
         return false;

@@ -566,6 +566,10 @@ QVariant PackProfile::data(const QModelIndex& index, int role) const
 
 bool PackProfile::setData(const QModelIndex& index, [[maybe_unused]] const QVariant& value, int role)
 {
+    bool isSynced = d->m_instance && d->m_instance->settings()->get("IsSyncedInstance").toBool();
+    if (d->interactionDisabled || isSynced) {
+        return false;
+    }
     if (!index.isValid() || index.row() < 0 || index.row() >= rowCount(index.parent())) {
         return false;
     }
@@ -613,7 +617,8 @@ Qt::ItemFlags PackProfile::flags(const QModelIndex& index) const
 
     auto patch = d->components.at(row);
     // TODO: this will need fine-tuning later...
-    if (patch->canBeDisabled() && !d->interactionDisabled) {
+    bool isSynced = d->m_instance && d->m_instance->settings()->get("IsSyncedInstance").toBool();
+    if (patch->canBeDisabled() && !d->interactionDisabled && !isSynced) {
         outFlags |= Qt::ItemIsUserCheckable;
     }
     return outFlags;

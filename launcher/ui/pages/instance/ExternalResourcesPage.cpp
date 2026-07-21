@@ -166,6 +166,9 @@ void ExternalResourcesPage::retranslate()
 
 void ExternalResourcesPage::itemActivated(const QModelIndex&)
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
     m_model->setResourceEnabled(selection.indexes(), EnableAction::TOGGLE);
 }
@@ -183,12 +186,17 @@ bool ExternalResourcesPage::shouldDisplay() const
 
 bool ExternalResourcesPage::listFilter(QKeyEvent* keyEvent)
 {
+    bool isSynced = m_instance && m_instance->settings()->get("IsSyncedInstance").toBool();
     switch (keyEvent->key()) {
         case Qt::Key_Delete:
-            removeItem();
+            if (!isSynced) {
+                removeItem();
+            }
             return true;
         case Qt::Key_Plus:
-            addItem();
+            if (!isSynced) {
+                addItem();
+            }
             return true;
         default:
             break;
@@ -210,6 +218,9 @@ bool ExternalResourcesPage::eventFilter(QObject* obj, QEvent* ev)
 
 void ExternalResourcesPage::addItem()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto list = GuiUtil::BrowseForFiles(
         helpPage(), tr("Select %1", "Select whatever type of files the page contains. Example: 'Loader Mods'").arg(displayName()),
         m_fileSelectionFilter.arg(displayName()), APPLICATION->settings()->get("CentralModsDir").toString(), this->parentWidget());
@@ -223,6 +234,9 @@ void ExternalResourcesPage::addItem()
 
 void ExternalResourcesPage::removeItem()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
 
     int count = 0;
@@ -281,12 +295,18 @@ void ExternalResourcesPage::removeItems(const QItemSelection& selection)
 
 void ExternalResourcesPage::enableItem()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
     m_model->setResourceEnabled(selection.indexes(), EnableAction::ENABLE);
 }
 
 void ExternalResourcesPage::disableItem()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
     m_model->setResourceEnabled(selection.indexes(), EnableAction::DISABLE);
 }
@@ -317,14 +337,18 @@ void ExternalResourcesPage::updateActions()
     const QModelIndexList selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
     const QList<Resource*> selectedResources = m_model->selectedResources(selection);
 
-    ui->actionUpdateItem->setEnabled(!m_model->empty());
-    ui->actionResetItemMetadata->setEnabled(hasSelection);
+    bool isSynced = m_instance && m_instance->settings()->get("IsSyncedInstance").toBool();
 
-    ui->actionChangeVersion->setEnabled(selectedResources.size() == 1 && selectedResources[0]->metadata() != nullptr);
+    ui->actionAddItem->setEnabled(!isSynced);
+    ui->actionDownloadItem->setEnabled(!isSynced);
+    ui->actionUpdateItem->setEnabled(!isSynced && !m_model->empty());
+    ui->actionResetItemMetadata->setEnabled(!isSynced && hasSelection);
 
-    ui->actionRemoveItem->setEnabled(hasSelection);
-    ui->actionEnableItem->setEnabled(hasSelection);
-    ui->actionDisableItem->setEnabled(hasSelection);
+    ui->actionChangeVersion->setEnabled(!isSynced && selectedResources.size() == 1 && selectedResources[0]->metadata() != nullptr);
+
+    ui->actionRemoveItem->setEnabled(!isSynced && hasSelection);
+    ui->actionEnableItem->setEnabled(!isSynced && hasSelection);
+    ui->actionDisableItem->setEnabled(!isSynced && hasSelection);
 
     ui->actionViewHomepage->setEnabled(hasSelection && std::any_of(selectedResources.begin(), selectedResources.end(),
                                                                    [](Resource* resource) { return !resource->homepage().isEmpty(); }));

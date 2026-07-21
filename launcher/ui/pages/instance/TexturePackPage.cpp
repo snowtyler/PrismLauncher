@@ -75,6 +75,7 @@ TexturePackPage::TexturePackPage(MinecraftInstance* instance, TexturePackFolderM
     ui->actionsToolbar->insertActionAfter(ui->actionUpdateItem, ui->actionChangeVersion);
 
     ui->actionViewHomepage->setToolTip(tr("View the homepages of all selected texture packs."));
+    updateActions();
 }
 
 void TexturePackPage::updateFrame(const QModelIndex& current, [[maybe_unused]] const QModelIndex& previous)
@@ -87,6 +88,9 @@ void TexturePackPage::updateFrame(const QModelIndex& current, [[maybe_unused]] c
 
 void TexturePackPage::downloadTexturePacks()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -139,6 +143,9 @@ void TexturePackPage::downloadDialogFinished(int result)
 
 void TexturePackPage::updateTexturePacks()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -220,6 +227,9 @@ void TexturePackPage::updateTexturePacks()
 
 void TexturePackPage::deleteTexturePackMetadata()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedTexturePacks(selection).length();
     if (selectionCount == 0) {
@@ -243,6 +253,9 @@ void TexturePackPage::deleteTexturePackMetadata()
 
 void TexturePackPage::changeTexturePackVersion()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }

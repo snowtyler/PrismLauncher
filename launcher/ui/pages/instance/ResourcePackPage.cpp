@@ -69,6 +69,7 @@ ResourcePackPage::ResourcePackPage(MinecraftInstance* instance, ResourcePackFold
     ui->actionChangeVersion->setToolTip(tr("Change a mod's version."));
     connect(ui->actionChangeVersion, &QAction::triggered, this, &ResourcePackPage::changeResourcePackVersion);
     ui->actionsToolbar->insertActionAfter(ui->actionUpdateItem, ui->actionChangeVersion);
+    updateActions();
 }
 
 void ResourcePackPage::updateFrame(const QModelIndex& current, [[maybe_unused]] const QModelIndex& previous)
@@ -81,6 +82,9 @@ void ResourcePackPage::updateFrame(const QModelIndex& current, [[maybe_unused]] 
 
 void ResourcePackPage::downloadResourcePacks()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -134,6 +138,9 @@ void ResourcePackPage::downloadDialogFinished(int result)
 
 void ResourcePackPage::updateResourcePacks()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
@@ -215,6 +222,9 @@ void ResourcePackPage::updateResourcePacks()
 
 void ResourcePackPage::deleteResourcePackMetadata()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedResourcePacks(selection).length();
     if (selectionCount == 0) {
@@ -238,6 +248,9 @@ void ResourcePackPage::deleteResourcePackMetadata()
 
 void ResourcePackPage::changeResourcePackVersion()
 {
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
     if (m_instance->typeName() != "Minecraft") {
         return;  // this is a null instance or a legacy instance
     }
