@@ -57,6 +57,8 @@ set(CORE_SOURCES
     tasks/SyncedInstanceUpdateTask.cpp
     tasks/SyncedInstanceUploadTask.h
     tasks/SyncedInstanceUploadTask.cpp
+    tasks/ModpackUpdateCheckTask.h
+    tasks/ModpackUpdateCheckTask.cpp
 
     # Resource downloading task
     ResourceDownloadTask.h
@@ -846,6 +848,8 @@ SET(LAUNCHER_SOURCES
     ui/widgets/ModpackCard.cpp
     ui/widgets/ModpackDashboard.h
     ui/widgets/ModpackDashboard.cpp
+    ui/widgets/ToastNotification.h
+    ui/widgets/ToastNotification.cpp
     ui/InstanceWindow.h
     ui/InstanceWindow.cpp
     ui/ViewLogWindow.h

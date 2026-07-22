@@ -130,6 +130,9 @@ class MainWindow : public QMainWindow {
     void refreshInstances();
 
     void checkForUpdates();
+    void checkForModpackUpdates(bool isStartup = false);
+    void on_actionCheckModpackUpdates_triggered();
+    void showToast(const QString& title, const QString& message, const QString& buttonText = QString(), std::function<void()> onButtonClicked = nullptr);
 
     void on_actionSettings_triggered();
 
@@ -260,4 +263,9 @@ class MainWindow : public QMainWindow {
 
     // managed by the application object
     Task* m_versionLoadTask = nullptr;
+
+    class ToastNotification* m_toastNotification = nullptr;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 };

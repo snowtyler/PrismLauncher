@@ -37,4 +37,10 @@ public:
 
     explicit UploadConfirmDialog(BaseInstance* inst, QWidget* parent = nullptr);
     void accept() override;
+
+private slots:
+    void rowsInserted(QModelIndex parent, int top, int bottom);
+
+private:
+    QString ignoreFileName() const;
 };

@@ -8,14 +8,6 @@
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui/dialogs/UploadConfirmDialog.h"
 #include "FileSystem.h"
-#include "meta/Index.h"
-#include "meta/VersionList.h"
-#include "meta/Version.h"
-#include <QFileSystemModel>
-#include <QTreeView>
-#include <QHeaderView>
-#include "FastFileIconProvider.h"
-#include "FileIgnoreProxy.h"
 #include "MMCZip.h"
 
 #include <QNetworkRequest>
@@ -34,48 +26,6 @@
 #include <QDir>
 #include <QScrollBar>
 
-// Dialog for creating a new synced pack
-class CreatePackDialog : public QDialog {
-public:
-    QLineEdit* shortcodeEdit;
-    QLineEdit* nameEdit;
-    QLineEdit* mcVersionEdit;
-    QComboBox* loaderCombo;
-    QLineEdit* loaderVersionEdit;
-
-    explicit CreatePackDialog(QWidget* parent = nullptr) : QDialog(parent) {
-        setWindowTitle(tr("Create Synced Instance"));
-        auto layout = new QFormLayout(this);
-
-        shortcodeEdit = new QLineEdit(this);
-        shortcodeEdit->setPlaceholderText("e.g. TOO3EX");
-        layout->addRow(tr("Shortcode (A-Z, 0-9):"), shortcodeEdit);
-
-        nameEdit = new QLineEdit(this);
-        nameEdit->setPlaceholderText("e.g. Cozy Creations");
-        layout->addRow(tr("Pack Name:"), nameEdit);
-
-        mcVersionEdit = new QLineEdit("1.21.1", this);
-        layout->addRow(tr("Minecraft Version:"), mcVersionEdit);
-
-        loaderCombo = new QComboBox(this);
-        loaderCombo->addItems({"Fabric", "Forge", "NeoForge", "Quilt", "Vanilla"});
-        layout->addRow(tr("Mod Loader:"), loaderCombo);
-
-        loaderVersionEdit = new QLineEdit(this);
-        loaderVersionEdit->setPlaceholderText(tr("Leave empty for recommended"));
-        layout->addRow(tr("Loader Version:"), loaderVersionEdit);
-
-        auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-        layout->addRow(buttonBox);
-
-        connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
-        connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    }
-};
-
-
-
 ModpackDashboard::ModpackDashboard(QWidget* parent)
     : QScrollArea(parent)
 {
@@ -84,64 +34,157 @@ ModpackDashboard::ModpackDashboard(QWidget* parent)
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-    // Apply dashboard-wide style sheets for a dark, custom look
-    setStyleSheet(
-        "QScrollArea {"
-        "  background-color: #11111b;"
-        "}"
-        "QWidget#centralWidget {"
-        "  background-color: #11111b;"
-        "}"
-    );
+    // Apply dashboard dark background
+    setStyleSheet(R"(
+        QScrollArea {
+            background-color: #161822;
+        }
+        QWidget#centralWidget {
+            background-color: #161822;
+        }
+    )");
 
     m_centralWidget = new QWidget(this);
     m_centralWidget->setObjectName("centralWidget");
     setWidget(m_centralWidget);
 
-    auto mainLayout = new QVBoxLayout(m_centralWidget);
-    mainLayout->setContentsMargins(20, 10, 20, 20);
-    mainLayout->setSpacing(15);
+    // Outer layout to center the content container horizontally on large screens
+    auto* outerLayout = new QHBoxLayout(m_centralWidget);
+    outerLayout->setContentsMargins(15, 60, 15, 40);
+    outerLayout->setSpacing(0);
 
-    // Header layout
-    m_headerWidget = new QWidget(m_centralWidget);
-    auto headerLayout = new QHBoxLayout(m_headerWidget);
-    headerLayout->setContentsMargins(0, 0, 0, 0);
+    auto* contentWidget = new QWidget(m_centralWidget);
+    contentWidget->setFixedWidth(960); // Fixed container width prevents layout shifts during loading/refreshing
+    outerLayout->addWidget(contentWidget, 0, Qt::AlignHCenter | Qt::AlignTop);
 
-    auto brandingLabel = new QLabel(tr("Available Modpacks"), m_headerWidget);
-    brandingLabel->setStyleSheet("color: #cdd6f4; font-size: 24px; font-weight: bold;");
-    brandingLabel->setAlignment(Qt::AlignCenter);
-    headerLayout->addWidget(brandingLabel);
+    auto* mainLayout = new QVBoxLayout(contentWidget);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(36);
 
-    mainLayout->addWidget(m_headerWidget);
+    // Top Navigation Bar (Column 0: Dummy spacer 160px | Column 1: Search + Update Btn Centered | Column 2: Enter Pack Code Btn 160px)
+    auto* navLayout = new QGridLayout();
+    navLayout->setContentsMargins(0, 0, 0, 0);
+    navLayout->setSpacing(0);
+    navLayout->setColumnStretch(0, 1);
+    navLayout->setColumnStretch(1, 0);
+    navLayout->setColumnStretch(2, 1);
 
-    // Grid layout for cards
+    auto* leftSpacer = new QWidget(contentWidget);
+    leftSpacer->setFixedWidth(160);
+    navLayout->addWidget(leftSpacer, 0, 0, Qt::AlignLeft);
+
+    auto* centerContainer = new QWidget(contentWidget);
+    auto* centerGroup = new QHBoxLayout(centerContainer);
+    centerGroup->setContentsMargins(0, 0, 0, 0);
+    centerGroup->setSpacing(8);
+    centerGroup->setAlignment(Qt::AlignCenter);
+
+    m_searchEdit = new QLineEdit(centerContainer);
+    m_searchEdit->setPlaceholderText(tr("Search Modpacks..."));
+    m_searchEdit->setClearButtonEnabled(true);
+    m_searchEdit->setFixedWidth(360);
+    m_searchEdit->setStyleSheet(R"(
+        QLineEdit {
+            background-color: #262936;
+            color: #FFFFFF;
+            border: 1px solid #373B4D;
+            border-radius: 16px;
+            padding: 7px 16px;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border: 1px solid #4B5263;
+        }
+    )");
+    centerGroup->addWidget(m_searchEdit);
+
+    connect(m_searchEdit, &QLineEdit::textChanged, this, [this](const QString&) {
+        applyFilter();
+    });
+
+    // Check for Modpack Updates Button
+    m_refreshBtn = new QPushButton(centerContainer);
+    m_refreshBtn->setFixedSize(36, 36);
+    m_refreshBtn->setCursor(Qt::PointingHandCursor);
+    m_refreshBtn->setToolTip(tr("Check for modpack updates"));
+
+    QIcon refreshIcon = QIcon::fromTheme("checkupdate");
+    if (refreshIcon.isNull()) refreshIcon = QIcon::fromTheme("view-refresh");
+    if (refreshIcon.isNull()) refreshIcon = QIcon::fromTheme("refresh");
+
+    if (!refreshIcon.isNull()) {
+        m_refreshBtn->setIcon(refreshIcon);
+        m_refreshBtn->setIconSize(QSize(18, 18));
+    } else {
+        m_refreshBtn->setText(QString::fromUtf8("\xE2\x86\xBB"));
+    }
+
+    m_refreshBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #262936;
+            color: #E2E8F0;
+            border: 1px solid #373B4D;
+            border-radius: 18px;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #373B4D;
+            color: #FFFFFF;
+        }
+    )");
+    centerGroup->addWidget(m_refreshBtn);
+
+    connect(m_refreshBtn, &QPushButton::clicked, this, [this]() {
+        emit checkModpackUpdatesRequested();
+        refreshDashboard();
+    });
+
+    navLayout->addWidget(centerContainer, 0, 1, Qt::AlignCenter);
+
+    // Far Right: Enter Pack Code Button
+    m_enterCodeBtn = new QPushButton(tr("[+] Enter Pack Code"), contentWidget);
+    m_enterCodeBtn->setCursor(Qt::PointingHandCursor);
+    m_enterCodeBtn->setFixedWidth(160);
+    m_enterCodeBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #373B4D;
+            color: #FFFFFF;
+            font-weight: bold;
+            border: 1px solid #4B5263;
+            border-radius: 16px;
+            padding: 7px 16px;
+            font-size: 12px;
+        }
+        QPushButton:hover {
+            background-color: #4B5263;
+        }
+    )");
+    navLayout->addWidget(m_enterCodeBtn, 0, 2, Qt::AlignRight);
+
+    connect(m_enterCodeBtn, &QPushButton::clicked, this, &ModpackDashboard::onAddPrivatePackClicked);
+
+    mainLayout->addLayout(navLayout);
+
+    // Grid Layout for Cards (3 columns)
     m_gridLayout = new QGridLayout();
-    m_gridLayout->setSpacing(15);
+    m_gridLayout->setSpacing(16);
     mainLayout->addLayout(m_gridLayout);
 
     // Loading indicator
-    m_loadingLabel = new QLabel(tr("Checking for modpacks..."), m_centralWidget);
-    m_loadingLabel->setStyleSheet("color: #a6adc8; font-size: 16px;");
+    m_loadingLabel = new QLabel(tr("Checking for modpacks..."), contentWidget);
+    m_loadingLabel->setStyleSheet("color: #9CA3AF; font-size: 15px;");
     m_loadingLabel->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(m_loadingLabel, 1, Qt::AlignCenter);
 
-    // Footer actions
-    auto footerLayout = new QHBoxLayout();
-    auto addPrivateLink = new QPushButton(tr("[+] Add Private Pack Code"), m_centralWidget);
-    addPrivateLink->setStyleSheet("QPushButton { color: #f5c2e7; border: none; font-size: 14px; text-decoration: underline; background: transparent; } QPushButton:hover { color: #f38ba8; }");
-    addPrivateLink->setCursor(Qt::PointingHandCursor);
-    footerLayout->addWidget(addPrivateLink, 0, Qt::AlignLeft);
-    connect(addPrivateLink, &QPushButton::clicked, this, &ModpackDashboard::onAddPrivatePackClicked);
-
-    mainLayout->addLayout(footerLayout);
-
     fetchRegistry();
 
-    // Periodically update card states if instances change
+    // Periodically update card statuses if instances change
     auto updateCardStatuses = [this]() {
         for (auto* card : m_cards) {
             card->updateStatus();
         }
+        applyFilter();
     };
     connect(APPLICATION->instances(), &InstanceList::dataChanged, this, updateCardStatuses);
     connect(APPLICATION->instances(), &InstanceList::instancesChanged, this, updateCardStatuses);
@@ -165,12 +208,19 @@ void ModpackDashboard::fetchRegistry()
     m_loadingLabel->setVisible(true);
     m_loadingLabel->setText(tr("Downloading modpacks list..."));
 
-    // Clear previous cards
+    // Clear previous cards & placeholders
     for (auto* card : m_cards) {
         m_gridLayout->removeWidget(card);
         card->deleteLater();
     }
     m_cards.clear();
+
+    for (auto* ph : m_placeholders) {
+        m_gridLayout->removeWidget(ph);
+        ph->deleteLater();
+    }
+    m_placeholders.clear();
+
     m_packs.clear();
 
     QString publicUrl = APPLICATION->settings()->get("SyncR2PublicUrl").toString();
@@ -204,7 +254,7 @@ void ModpackDashboard::registryFetched()
         }
     }
 
-    // Now, fetch any private packs that are stored locally
+    // Fetch private packs stored locally
     QStringList privateCodes = APPLICATION->settings()->get("PrivatePacks").toStringList();
     if (privateCodes.isEmpty()) {
         renderCards();
@@ -218,7 +268,6 @@ void ModpackDashboard::registryFetched()
 
     m_privateReplies.clear();
     for (const QString& code : privateCodes) {
-        // Fetch manifest/details for private packs directly
         QUrl url(publicUrl + "shortcodes/" + code + ".json");
         auto* privateReply = APPLICATION->network()->get(QNetworkRequest(url));
         m_privateReplies.append(privateReply);
@@ -239,7 +288,6 @@ void ModpackDashboard::privatePackManifestFetched()
         QJsonDocument doc = QJsonDocument::fromJson(manifestData);
         if (!doc.isNull() && doc.isObject()) {
             QJsonObject manifestObj = doc.object();
-            // Wrap manifest details into a pack item format
             QJsonObject pack;
             pack["shortcode"] = manifestObj["shortcode"].toString();
             pack["name"] = manifestObj["name"].toString();
@@ -257,7 +305,6 @@ void ModpackDashboard::privatePackManifestFetched()
             pack["icon_url"] = publicUrl + "assets/" + pack["shortcode"].toString() + "-icon.png";
             pack["is_private"] = true;
 
-            // Prevent duplicates
             bool exists = false;
             for (const auto& existing : m_packs) {
                 if (existing["shortcode"].toString() == pack["shortcode"].toString()) {
@@ -278,7 +325,7 @@ void ModpackDashboard::privatePackManifestFetched()
 
 void ModpackDashboard::renderCards()
 {
-    // Dynamically append any locally configured synced instances not already in m_packs
+    // Append local synced instances if not in m_packs
     for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
         BaseInstance* inst = APPLICATION->instances()->at(i);
         if (inst->settings()->get("IsSyncedInstance").toBool()) {
@@ -303,9 +350,9 @@ void ModpackDashboard::renderCards()
                 }
                 pack["description"] = inst->settings()->get("ExportSummary").toString();
                 if (pack["description"].toString().isEmpty()) {
-                    pack["description"] = tr("Local synced instance (not yet uploaded to R2).");
+                    pack["description"] = tr("Local synced instance.");
                 }
-                
+
                 QString publicUrl = APPLICATION->settings()->get("SyncR2PublicUrl").toString();
                 if (!publicUrl.endsWith('/')) {
                     publicUrl += '/';
@@ -321,28 +368,71 @@ void ModpackDashboard::renderCards()
 
     m_loadingLabel->setVisible(false);
 
-    if (m_packs.isEmpty()) {
-        m_loadingLabel->setVisible(true);
-        m_loadingLabel->setText(tr("No modpacks found. Enter a private pack code below!"));
-        return;
-    }
-
-    int columns = 3;
+    // Create cards for all packs
     for (int i = 0; i < m_packs.size(); ++i) {
         auto* card = new ModpackCard(m_packs[i], m_adminMode, m_centralWidget);
-        m_gridLayout->addWidget(card, i / columns, i % columns);
         m_cards.append(card);
 
         connect(card, &ModpackCard::actionTriggered, this, &ModpackDashboard::onCardActionTriggered);
         connect(card, &ModpackCard::settingsTriggered, this, &ModpackDashboard::onCardSettingsTriggered);
     }
+
+    applyFilter();
+}
+
+void ModpackDashboard::applyFilter()
+{
+    // Remove existing grid items from layout
+    for (auto* card : m_cards) {
+        m_gridLayout->removeWidget(card);
+        card->hide();
+    }
+    for (auto* ph : m_placeholders) {
+        m_gridLayout->removeWidget(ph);
+        ph->deleteLater();
+    }
+    m_placeholders.clear();
+
+    QString query = m_searchEdit->text().trimmed().toLower();
+    QList<ModpackCard*> visibleCards;
+
+    for (auto* card : m_cards) {
+        bool searchMatch = query.isEmpty() ||
+                           m_packs[m_cards.indexOf(card)]["name"].toString().toLower().contains(query) ||
+                           m_packs[m_cards.indexOf(card)]["description"].toString().toLower().contains(query);
+
+        if (searchMatch) {
+            visibleCards.append(card);
+        }
+    }
+
+    int columns = 3;
+    int cardIndex = 0;
+
+    // Place matching pack cards into grid (3 columns)
+    for (; cardIndex < visibleCards.size(); ++cardIndex) {
+        auto* card = visibleCards[cardIndex];
+        m_gridLayout->addWidget(card, cardIndex / columns, cardIndex % columns);
+        card->show();
+    }
+
+    // If visible cards are less than 3, add placeholder cards to complete at least 3 cards per row
+    int minCardsRequired = 3;
+    while (cardIndex < minCardsRequired) {
+        auto* placeholder = new PlaceholderModpackCard(m_centralWidget);
+        m_gridLayout->addWidget(placeholder, cardIndex / columns, cardIndex % columns);
+        m_placeholders.append(placeholder);
+        cardIndex++;
+    }
+
+    m_loadingLabel->setVisible(visibleCards.isEmpty() && m_cards.isEmpty());
 }
 
 void ModpackDashboard::onCardActionTriggered(const QString& action, const QString& shortcode)
 {
     BaseInstance* inst = nullptr;
     for (int i = 0; i < m_cards.size(); ++i) {
-        if (m_cards[i]->localInstance() && m_packs[i]["shortcode"].toString() == shortcode) {
+        if (m_cards[i]->shortcode() == shortcode) {
             inst = m_cards[i]->localInstance();
             break;
         }
@@ -351,6 +441,22 @@ void ModpackDashboard::onCardActionTriggered(const QString& action, const QStrin
     if (action == "play") {
         if (inst) {
             emit launchInstance(inst->id());
+        }
+    } else if (action == "update") {
+        if (inst) {
+            auto updateTask = makeShared<SyncedInstanceUpdateTask>(inst);
+            ProgressDialog updateDialog(this);
+            updateDialog.execWithTask(updateTask.get());
+
+            if (updateTask->wasSuccessful()) {
+                inst->setHasModpackUpdate(false);
+                for (auto* card : m_cards) {
+                    card->updateStatus();
+                }
+                applyFilter();
+            } else if (!updateTask->failReason().isEmpty()) {
+                QMessageBox::critical(this, tr("Update Failed"), updateTask->failReason());
+            }
         }
     } else if (action == "delete") {
         if (inst) {
@@ -368,195 +474,119 @@ void ModpackDashboard::onCardActionTriggered(const QString& action, const QStrin
                 if (!APPLICATION->instances()->trashInstance(inst->id())) {
                     APPLICATION->instances()->deleteInstance(inst->id());
                 }
+                refreshDashboard();
             }
         }
     } else if (action == "install") {
-        // Fetch the manifest to read minecraft version & loader details
+        // Fetch manifest & install
         QString publicUrl = APPLICATION->settings()->get("SyncR2PublicUrl").toString();
         if (!publicUrl.endsWith('/')) {
             publicUrl += '/';
         }
 
         m_loadingLabel->setVisible(true);
-        m_loadingLabel->setText(tr("Fetching manifest for installation..."));
+        m_loadingLabel->setText(tr("Fetching modpack manifest..."));
 
         QUrl url(publicUrl + "shortcodes/" + shortcode + ".json");
-        auto* manifestReply = APPLICATION->network()->get(QNetworkRequest(url));
-        connect(manifestReply, &QNetworkReply::finished, this, [this, shortcode, manifestReply]() {
-            manifestReply->deleteLater();
+        QNetworkReply* reply = APPLICATION->network()->get(QNetworkRequest(url));
+        connect(reply, &QNetworkReply::finished, this, [this, reply, shortcode]() {
+            reply->deleteLater();
             m_loadingLabel->setVisible(false);
 
-            if (manifestReply->error() != QNetworkReply::NoError) {
-                QMessageBox::critical(this, tr("Error"), tr("Failed to fetch installation details: %1").arg(manifestReply->errorString()));
-                return;
+            if (reply->error() == QNetworkReply::NoError) {
+                QByteArray data = reply->readAll();
+                QJsonDocument doc = QJsonDocument::fromJson(data);
+                if (!doc.isNull() && doc.isObject()) {
+                    runInstall(shortcode, doc.object());
+                }
+            } else {
+                QMessageBox::critical(this, tr("Error"), tr("Failed to fetch modpack manifest: %1").arg(reply->errorString()));
             }
-
-            QByteArray data = manifestReply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(data);
-            if (doc.isNull() || !doc.isObject()) {
-                QMessageBox::critical(this, tr("Error"), tr("Failed to parse installation details."));
-                return;
-            }
-
-            runInstall(shortcode, doc.object());
         });
     }
 }
 
-void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& manifest)
-{
-    QString name = manifest["name"].toString();
-    QString mcVersion = manifest["game_version"].toString();
-    QString loaderType = manifest["loader"].toString();
-    QString loaderVerStr = manifest["loader_version"].toString();
-
-    // Check version metadata
-    auto mcList = APPLICATION->metadataIndex()->get("net.minecraft");
-    mcList->waitToLoad();
-    auto mcVer = mcList->getVersion(mcVersion);
-    if (!mcVer) {
-        QMessageBox::critical(this, tr("Install Error"), tr("Minecraft version %1 is not supported or not loaded.").arg(mcVersion));
-        return;
-    }
-
-    BaseVersion::Ptr loaderVer = nullptr;
-    QString loaderUid = "";
-
-    if (loaderType != "Vanilla") {
-        if (loaderType == "Fabric") {
-            loaderUid = "net.fabricmc.fabric-loader";
-        } else if (loaderType == "Forge") {
-            loaderUid = "net.minecraftforge";
-        } else if (loaderType == "NeoForge") {
-            loaderUid = "org.neoforged.neoforge";
-        } else if (loaderType == "Quilt") {
-            loaderUid = "org.quiltmc.quilt-loader";
-        }
-
-        auto loaderList = APPLICATION->metadataIndex()->get(loaderUid);
-        loaderList->waitToLoad();
-
-        if (loaderVerStr.isEmpty()) {
-            loaderVer = loaderList->getRecommended();
-        } else {
-            loaderVer = loaderList->getVersion(loaderVerStr);
-        }
-
-        if (!loaderVer) {
-            QMessageBox::critical(this, tr("Install Error"), tr("Loader version %1 is not available.").arg(loaderVerStr));
-            return;
-        }
-    }
-
-    // Run creation task
-    InstanceTask* rawTask = nullptr;
-    if (loaderType == "Vanilla") {
-        rawTask = new VanillaCreationTask(mcVer);
-    } else {
-        rawTask = new VanillaCreationTask(mcVer, loaderUid, loaderVer);
-    }
-
-    rawTask->setName(name);
-    rawTask->setIcon("default");
-
-    // Determine target directory for synced instances
-    QDir instDirObj(APPLICATION->settings()->get("InstanceDir").toString());
-    instDirObj.cdUp();
-    QString syncedInstDir = instDirObj.absoluteFilePath("synced_instances");
-    QDir().mkpath(syncedInstDir);
-
-    unique_qobject_ptr<Task> task(APPLICATION->instances()->wrapInstanceTask(rawTask, syncedInstDir));
-    ProgressDialog loadDialog(this);
-    loadDialog.execWithTask(task.get());
-
-    if (!task->wasSuccessful()) {
-        return;
-    }
-
-    // Find the newly created instance
-    BaseInstance* inst = nullptr;
-    for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
-        BaseInstance* candidate = APPLICATION->instances()->at(i);
-        QDir cDir(candidate->instanceRoot());
-        QDir sDir(syncedInstDir);
-        if (cDir.absolutePath().startsWith(sDir.absolutePath()) && candidate->name() == name) {
-            inst = candidate;
-            break;
-        }
-    }
-    if (!inst) {
-        QStringList debugList;
-        for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
-            BaseInstance* candidate = APPLICATION->instances()->at(i);
-            debugList.append(QString("- %1 (%2)").arg(candidate->name(), candidate->instanceRoot()));
-        }
-        QMessageBox::critical(this, tr("Install Error"),
-                              tr("Could not locate the installed instance.\n\nSearching for: '%1'\nSynced dir: '%2'\n\nLoaded instances:\n%3")
-                              .arg(name, syncedInstDir, debugList.join("\n")));
-        return;
-    }
-
-    // Mark as Synced Instance
-    inst->settings()->set("IsSyncedInstance", true);
-    inst->settings()->set("SyncShortcode", shortcode);
-    inst->settings()->set("SyncVersion", ""); // Force updates immediately
-    inst->settings()->set("ExportVersion", manifest["version"].toString());
-    inst->settings()->set("IntendedVersion", mcVersion);
-    inst->saveNow();
-
-    // Trigger update immediately to download mods/configs
-    auto updateTask = makeShared<SyncedInstanceUpdateTask>(inst);
-    ProgressDialog updateDialog(this);
-    updateDialog.execWithTask(updateTask.get());
-
-    // Refresh cards status
-    for (auto* card : m_cards) {
-        card->updateStatus();
-    }
-}
-
-
 void ModpackDashboard::onCardSettingsTriggered(const QString& shortcode)
 {
-    BaseInstance* inst = nullptr;
-    for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
-        BaseInstance* candidate = APPLICATION->instances()->at(i);
-        if (candidate->settings()->get("IsSyncedInstance").toBool() &&
-            candidate->settings()->get("SyncShortcode").toString() == shortcode) {
-            inst = candidate;
+    for (int i = 0; i < m_cards.size(); ++i) {
+        if (m_cards[i]->shortcode() == shortcode && m_cards[i]->localInstance()) {
+            emit editInstance(m_cards[i]->localInstance()->id());
             break;
         }
-    }
-    if (!inst) {
-        for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
-            BaseInstance* candidate = APPLICATION->instances()->at(i);
-            if (!candidate->settings()->get("IsSyncedInstance").toBool() &&
-                candidate->settings()->get("SyncShortcode").toString() == shortcode) {
-                inst = candidate;
-                break;
-            }
-        }
-    }
-    if (inst) {
-        emit editInstance(inst->id());
     }
 }
 
 void ModpackDashboard::onAddPrivatePackClicked()
 {
     bool ok;
-    QString code = QInputDialog::getText(this, tr("Add Private Pack"),
-                                         tr("Enter unique modpack shortcode:"),
-                                         QLineEdit::Normal, "", &ok);
+    QString code = QInputDialog::getText(this, tr("Add Private Modpack"),
+                                         tr("Enter private modpack code (e.g. TOO3EX):"), QLineEdit::Normal,
+                                         "", &ok);
     if (ok && !code.trimmed().isEmpty()) {
         code = code.trimmed().toUpper();
-        QStringList privatePacks = APPLICATION->settings()->get("PrivatePacks").toStringList();
-        if (!privatePacks.contains(code)) {
-            privatePacks.append(code);
-            APPLICATION->settings()->set("PrivatePacks", privatePacks);
-            refreshDashboard();
+
+        QStringList privateCodes = APPLICATION->settings()->get("PrivatePacks").toStringList();
+        if (!privateCodes.contains(code)) {
+            privateCodes.append(code);
+            APPLICATION->settings()->set("PrivatePacks", privateCodes);
         }
+
+        refreshDashboard();
     }
 }
 
+class SimpleVersion : public BaseVersion {
+    QString m_ver;
+public:
+    explicit SimpleVersion(QString ver) : m_ver(std::move(ver)) {}
+    QString descriptor() const override { return m_ver; }
+    QString name() const override { return m_ver; }
+    QString typeString() const override { return "Release"; }
+};
 
+void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& manifest)
+{
+    QString packName = manifest["name"].toString();
+    if (packName.isEmpty()) packName = shortcode;
+
+    QString mcVersion = manifest["mc_version"].toString();
+    if (mcVersion.isEmpty()) mcVersion = "1.21.1";
+
+    QString loaderName = manifest["loader"].toString();
+    if (loaderName.isEmpty()) loaderName = "NeoForge";
+
+    QString version = manifest["version"].toString();
+    if (version.isEmpty()) version = "1.0.0";
+
+    auto mcVer = std::make_shared<SimpleVersion>(mcVersion);
+    auto task = std::make_unique<VanillaCreationTask>(mcVer);
+    task->setName(packName);
+    task->setGroup("Synced Modpacks");
+
+    ProgressDialog dialog(this);
+    dialog.execWithTask(task.get());
+
+    // Post-process created instance
+    BaseInstance* inst = nullptr;
+    for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
+        if (APPLICATION->instances()->at(i)->name() == packName) {
+            inst = APPLICATION->instances()->at(i);
+            break;
+        }
+    }
+
+    if (inst) {
+        inst->settings()->set("IsSyncedInstance", true);
+        inst->settings()->set("SyncShortcode", shortcode);
+        inst->settings()->set("SyncVersion", version);
+        inst->settings()->set("SyncVersionName", version);
+        inst->saveNow();
+
+        // Perform initial sync
+        auto updateTask = makeShared<SyncedInstanceUpdateTask>(inst);
+        ProgressDialog syncDialog(this);
+        syncDialog.execWithTask(updateTask.get());
+
+        refreshDashboard();
+    }
+}

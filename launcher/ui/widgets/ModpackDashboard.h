@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QPushButton>
+#include <QLineEdit>
 #include <QLabel>
 #include "ModpackCard.h"
 
@@ -23,6 +24,7 @@ public:
 signals:
     void launchInstance(const QString& id);
     void editInstance(const QString& id);
+    void checkModpackUpdatesRequested();
 
 private slots:
     void registryFetched();
@@ -34,17 +36,22 @@ private slots:
 private:
     QWidget* m_centralWidget = nullptr;
     QGridLayout* m_gridLayout = nullptr;
-    QWidget* m_headerWidget = nullptr;
     QLabel* m_loadingLabel = nullptr;
+
+    QLineEdit* m_searchEdit = nullptr;
+    QPushButton* m_refreshBtn = nullptr;
+    QPushButton* m_enterCodeBtn = nullptr;
 
     bool m_adminMode = false;
     QList<QJsonObject> m_packs;
     QList<ModpackCard*> m_cards;
+    QList<PlaceholderModpackCard*> m_placeholders;
 
     QNetworkReply* m_registryReply = nullptr;
     QList<QNetworkReply*> m_privateReplies;
 
     void fetchRegistry();
     void renderCards();
+    void applyFilter();
     void runInstall(const QString& shortcode, const QJsonObject& manifest);
 };

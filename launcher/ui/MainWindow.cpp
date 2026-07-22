@@ -45,6 +45,9 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
 #include "widgets/ModpackDashboard.h"
+#include "widgets/ToastNotification.h"
+#include "tasks/ModpackUpdateCheckTask.h"
+#include "tasks/SyncedInstanceUpdateTask.h"
 #include <QStackedWidget>
 #include <QTabBar>
 
@@ -389,6 +392,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
                 }
             }
         });
+        connect(dashboard, &ModpackDashboard::checkModpackUpdatesRequested, this, [this]() {
+            checkForModpackUpdates(false);
+        });
     }
     // The cat background
     {
@@ -520,6 +526,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         if (updater) {
             connect(updater, &ExternalUpdater::canCheckForUpdatesChanged, this, &MainWindow::updatesAllowedChanged);
         }
+    }
+
+    connect(ui->actionCheckModpackUpdates, &QAction::triggered, this, &MainWindow::on_actionCheckModpackUpdates_triggered);
+
+    if (APPLICATION->settings()->get("CheckModpackUpdatesOnStartup").toBool()) {
+        QTimer::singleShot(1500, this, [this]() {
+            checkForModpackUpdates(true);
+        });
     }
 
     connect(ui->actionUndoTrashInstance, &QAction::triggered, this, &MainWindow::undoTrashInstance);
@@ -811,8 +825,21 @@ void MainWindow::updateLaunchButton()
         launchMenu->clear();
     else
         launchMenu = new QMenu(this);
-    if (m_selectedInstance)
+
+    if (m_selectedInstance) {
+        if (m_selectedInstance->hasUpdateAvailable()) {
+            ui->actionLaunchInstance->setText(tr("&Update"));
+            ui->actionLaunchInstance->setToolTip(tr("Update %1 to version %2")
+                                                     .arg(m_selectedInstance->name(), m_selectedInstance->modpackUpdateVersion()));
+        } else {
+            ui->actionLaunchInstance->setText(tr("&Launch"));
+            ui->actionLaunchInstance->setToolTip(tr("Launch the selected instance."));
+        }
         m_selectedInstance->populateLaunchMenu(launchMenu);
+    } else {
+        ui->actionLaunchInstance->setText(tr("&Launch"));
+        ui->actionLaunchInstance->setToolTip(tr("Launch the selected instance."));
+    }
     ui->actionLaunchInstance->setMenu(launchMenu);
 }
 
@@ -1819,7 +1846,84 @@ void MainWindow::instanceActivated(QModelIndex index)
 void MainWindow::on_actionLaunchInstance_triggered()
 {
     if (m_selectedInstance && !m_selectedInstance->isRunning()) {
-        APPLICATION->launch(m_selectedInstance);
+        if (m_selectedInstance->hasUpdateAvailable()) {
+            auto updateTask = makeShared<SyncedInstanceUpdateTask>(m_selectedInstance);
+            showToast(tr("Updating Modpack"), tr("Downloading updates for %1...").arg(m_selectedInstance->name()));
+            connect(updateTask.get(), &Task::succeeded, this, [this]() {
+                m_selectedInstance->setHasModpackUpdate(false);
+                updateLaunchButton();
+                showToast(tr("Update Complete"), tr("%1 was updated successfully!").arg(m_selectedInstance->name()));
+            });
+            connect(updateTask.get(), &Task::failed, this, [this](const QString& reason) {
+                showToast(tr("Update Failed"), tr("Failed to update %1: %2").arg(m_selectedInstance->name(), reason));
+            });
+            startTask(updateTask.get());
+        } else {
+            APPLICATION->launch(m_selectedInstance);
+        }
+    }
+}
+
+void MainWindow::on_actionCheckModpackUpdates_triggered()
+{
+    checkForModpackUpdates(false);
+}
+
+void MainWindow::checkForModpackUpdates(bool isStartup)
+{
+    auto instancesList = APPLICATION->instances();
+    QList<BaseInstance*> rawInstances;
+    for (int i = 0; i < instancesList->count(); ++i) {
+        if (auto* inst = instancesList->at(i)) {
+            rawInstances.append(inst);
+        }
+    }
+
+    auto checkTask = new ModpackUpdateCheckTask(rawInstances);
+    connect(checkTask, &Task::succeeded, this, [this, checkTask, isStartup]() {
+        auto updatedList = checkTask->updatedInstances();
+        updateLaunchButton();
+
+        if (!updatedList.isEmpty()) {
+            if (updatedList.size() == 1) {
+                auto* inst = updatedList.first();
+                showToast(tr("Modpack Update Available"),
+                          tr("An update is available for %1 (%2).").arg(inst->name(), inst->modpackUpdateVersion()),
+                          tr("Update Now"),
+                          [this, inst]() {
+                              setSelectedInstanceById(inst->id());
+                              on_actionLaunchInstance_triggered();
+                          });
+            } else {
+                showToast(tr("Modpack Updates Available"),
+                          tr("%1 modpacks have available updates.").arg(updatedList.size()),
+                          tr("View Updates"),
+                          [this, updatedList]() {
+                              setSelectedInstanceById(updatedList.first()->id());
+                          });
+            }
+        } else if (!isStartup) {
+            showToast(tr("Modpack Updates"), tr("All modpacks are up to date."));
+        }
+    });
+
+    startTask(checkTask);
+}
+
+void MainWindow::showToast(const QString& title, const QString& message, const QString& buttonText, std::function<void()> onButtonClicked)
+{
+    if (!m_toastNotification) {
+        m_toastNotification = new ToastNotification(this);
+    }
+    m_toastNotification->showToast(title, message, buttonText, onButtonClicked);
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+    if (m_toastNotification && m_toastNotification->isVisible()) {
+        m_toastNotification->move(qMax(10, width() - m_toastNotification->width() - 25),
+                                  qMax(10, height() - m_toastNotification->height() - 25));
     }
 }
 

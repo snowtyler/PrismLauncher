@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1180</width>
+    <height>740</height>
    </rect>
   </property>
   <widget class="QWidget" name="centralWidget">
@@ -132,8 +132,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
-     <height>22</height>
+     <width>1180</width>
+     <height>740</height>
     </rect>
    </property>
    <widget class="QMenu" name="fileMenu">
@@ -226,6 +226,7 @@
     <addaction name="separator"/>
     <addaction name="actionMoreNews"/>
     <addaction name="actionCheckUpdate"/>
+    <addaction name="actionCheckModpackUpdates"/>
     <addaction name="actionOpenWiki"/>
     <addaction name="actionAbout"/>
    </widget>
@@ -296,20 +297,31 @@
     <string>Add a new instance.</string>
    </property>
   </action>
-  <action name="actionCheckUpdate">
-   <property name="icon">
-    <iconset theme="checkupdate"/>
-   </property>
-   <property name="text">
-    <string>&amp;Update...</string>
-   </property>
-   <property name="toolTip">
-    <string>Check for new updates for %1.</string>
-   </property>
-   <property name="menuRole">
-    <enum>QAction::ApplicationSpecificRole</enum>
-   </property>
-  </action>
+   <action name="actionCheckUpdate">
+    <property name="icon">
+     <iconset theme="checkupdate"/>
+    </property>
+    <property name="text">
+     <string>&amp;Update...</string>
+    </property>
+    <property name="toolTip">
+     <string>Check for new updates for %1.</string>
+    </property>
+    <property name="menuRole">
+     <enum>QAction::ApplicationSpecificRole</enum>
+    </property>
+   </action>
+   <action name="actionCheckModpackUpdates">
+    <property name="icon">
+     <iconset theme="checkupdate"/>
+    </property>
+    <property name="text">
+     <string>Check for &amp;Modpack Updates</string>
+    </property>
+    <property name="toolTip">
+     <string>Check for updates to all modpacks.</string>
+    </property>
+   </action>
   <action name="actionSettings">
    <property name="icon">
     <iconset theme="settings"/>

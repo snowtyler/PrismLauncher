@@ -248,6 +248,13 @@ class BaseInstance : public QObject {
         }
     }
 
+    QString modpackUpdateVersion() const { return m_modpackUpdateVersion; }
+    void setHasModpackUpdate(bool value, const QString& version = QString())
+    {
+        m_modpackUpdateVersion = version;
+        setUpdateAvailable(value);
+    }
+
     bool hasCrashed() const { return m_crashed; }
     void setCrashed(bool value)
     {
@@ -318,6 +325,7 @@ class BaseInstance : public QObject {
     Status m_status = Status::Present;
     bool m_crashed = false;
     bool m_hasUpdate = false;
+    QString m_modpackUpdateVersion;
     bool m_hasBrokenVersion = false;
 
     SettingsObject* m_global_settings;

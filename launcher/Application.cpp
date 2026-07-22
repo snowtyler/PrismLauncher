@@ -647,6 +647,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("SyncR2SecretKey", QString());
         m_settings->registerSetting("PrivatePacks", QStringList());
         m_settings->registerSetting("AdminPassword", "syncadmin");
+        m_settings->registerSetting("CheckModpackUpdatesOnStartup", true);
 
         // Theming
         m_settings->registerSetting("IconTheme", QString());

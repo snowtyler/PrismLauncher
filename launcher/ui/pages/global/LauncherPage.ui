@@ -240,6 +240,13 @@
             </property>
            </widget>
           </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QCheckBox" name="autoModpackUpdateCheckBox">
+            <property name="text">
+             <string>Check for modpack updates on startup</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

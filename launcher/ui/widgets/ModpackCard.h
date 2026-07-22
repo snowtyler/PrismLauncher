@@ -18,6 +18,9 @@ public:
     void setAdminMode(bool enabled);
     void updateStatus();
     BaseInstance* localInstance() const { return getLocalInstance(); }
+    QString shortcode() const { return m_shortcode; }
+    bool isInstalled() const { return getLocalInstance() != nullptr; }
+    bool hasUpdate() const;
 
 signals:
     void actionTriggered(const QString& action, const QString& shortcode);
@@ -36,14 +39,18 @@ private:
     QString m_name;
     QString m_version;
     QString m_bannerUrl;
+    QString m_loader;
+    QString m_mcVersion;
 
     QLabel* m_bannerLabel = nullptr;
+    QLabel* m_loaderBadge = nullptr;
+    QLabel* m_mcVersionBadge = nullptr;
     QLabel* m_titleLabel = nullptr;
     QLabel* m_versionLabel = nullptr;
     QLabel* m_descLabel = nullptr;
+    QLabel* m_updateSubLabel = nullptr;
+
     QPushButton* m_actionButton = nullptr;
-    
-    QWidget* m_bottomWidget = nullptr;
     QPushButton* m_settingsButton = nullptr;
     QPushButton* m_deleteButton = nullptr;
 
@@ -57,4 +64,11 @@ private:
 
     BaseInstance* getLocalInstance() const;
     void fetchBanner();
+};
+
+class PlaceholderModpackCard : public QFrame {
+    Q_OBJECT
+public:
+    explicit PlaceholderModpackCard(QWidget* parent = nullptr);
+    virtual ~PlaceholderModpackCard() = default;
 };

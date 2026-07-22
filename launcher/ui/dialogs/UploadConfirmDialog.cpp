@@ -22,7 +22,7 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
     : QDialog(parent), m_instance(inst)
 {
     setWindowTitle(tr("Upload / Sync Modpack"));
-    setMinimumSize(500, 700);
+    setMinimumSize(520, 720);
 
     auto* mainLayout = new QVBoxLayout(this);
 
@@ -58,7 +58,7 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
 
     bannerBrowseBtn = new QPushButton(tr("Browse..."), this);
     bannerLayout->addWidget(bannerBrowseBtn);
-    formLayout->addRow(tr("Banner Image (ideal: 240x120px):"), bannerLayout);
+    formLayout->addRow(tr("Banner Image (ideal: 270x135px):"), bannerLayout);
 
     connect(bannerBrowseBtn, &QPushButton::clicked, this, [this]() {
         QString file = QFileDialog::getOpenFileName(this, tr("Select Banner Image"), "", tr("Images (*.png *.jpg *.jpeg)"));
@@ -74,7 +74,7 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
     mainLayout->addLayout(formLayout);
 
     // File selection checklist tree view
-    mainLayout->addWidget(new QLabel(tr("Select files to include in sync:"), this));
+    mainLayout->addWidget(new QLabel(tr("Select files and folders to include in sync:"), this));
     treeView = new QTreeView(this);
     auto* model = new QFileSystemModel(this);
     model->setIconProvider(&m_icons);
@@ -82,26 +82,37 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
     proxyModel = new FileIgnoreProxy(root, this);
     proxyModel->setSourceModel(model);
 
-    // Exclude logs, cache, mixin outputs etc.
+    // Exclude logs, crash-reports, .cache, .fabric, .quilt, .mixin.out
     QString prefix = QDir(root).relativeFilePath(inst->gameRoot());
     for (auto path : { "logs", "crash-reports", ".cache", ".fabric", ".quilt", ".mixin.out" }) {
         proxyModel->ignoreFilesWithPath().insert(FS::PathCombine(prefix, path));
     }
     proxyModel->ignoreFilesWithName().append({ ".DS_Store", "thumbs.db", "Thumbs.db" });
 
+    // Load standard selection ignore files (retains previously selected set)
+    proxyModel->loadBlockedPathsFromFile(ignoreFileName());
+
     treeView->setModel(proxyModel);
-    treeView->setRootIndex(proxyModel->mapFromSource(model->index(root)));
-    treeView->sortByColumn(0, Qt::AscendingOrder);
-    
+
+    // Set root path FIRST on model to constrain model scope strictly to instance root
     model->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::AllDirs | QDir::Hidden);
-    model->setRootPath(root);
+    QModelIndex rootIdx = model->setRootPath(root);
+    treeView->setRootIndex(proxyModel->mapFromSource(rootIdx));
+
+    // Also update root index when directory loaded signal completes to prevent showing drive root
+    connect(model, &QFileSystemModel::directoryLoaded, this, [this, model, root]() {
+        QModelIndex srcIdx = model->index(root);
+        if (srcIdx.isValid()) {
+            treeView->setRootIndex(proxyModel->mapFromSource(srcIdx));
+        }
+    });
+
+    connect(proxyModel, &QAbstractItemModel::rowsInserted, this, &UploadConfirmDialog::rowsInserted);
+
+    treeView->sortByColumn(0, Qt::AscendingOrder);
     treeView->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     treeView->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     mainLayout->addWidget(treeView);
-
-    // Load standard selection ignore files (retains selected set)
-    QString syncIgnoreFile = FS::PathCombine(inst->instanceRoot(), ".syncignore");
-    proxyModel->loadBlockedPathsFromFile(syncIgnoreFile);
 
     // Credentials
     auto* credForm = new QFormLayout();
@@ -135,9 +146,23 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
 
+void UploadConfirmDialog::rowsInserted(QModelIndex parent, int top, int bottom)
+{
+    for (int i = top; i < bottom; i++) {
+        auto node = proxyModel->index(i, 0, parent);
+        if (proxyModel->shouldExpand(node)) {
+            treeView->expand(node);
+        }
+    }
+}
+
+QString UploadConfirmDialog::ignoreFileName() const
+{
+    return FS::PathCombine(m_instance->instanceRoot(), ".syncignore");
+}
+
 void UploadConfirmDialog::accept()
 {
-    QString syncIgnoreFile = FS::PathCombine(m_instance->instanceRoot(), ".syncignore");
-    proxyModel->saveBlockedPathsToFile(syncIgnoreFile);
+    proxyModel->saveBlockedPathsToFile(ignoreFileName());
     QDialog::accept();
 }
