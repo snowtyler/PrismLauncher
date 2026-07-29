@@ -74,6 +74,7 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
     connect(ui->actionRemoveItem, &QAction::triggered, this, &ExternalResourcesPage::removeItem);
     connect(ui->actionEnableItem, &QAction::triggered, this, &ExternalResourcesPage::enableItem);
     connect(ui->actionDisableItem, &QAction::triggered, this, &ExternalResourcesPage::disableItem);
+    connect(ui->actionPinItem, &QAction::triggered, this, &ExternalResourcesPage::pinItem);
     connect(ui->actionViewHomepage, &QAction::triggered, this, &ExternalResourcesPage::viewHomepage);
     connect(ui->actionViewConfigs, &QAction::triggered, this, &ExternalResourcesPage::viewConfigs);
     connect(ui->actionViewFolder, &QAction::triggered, this, &ExternalResourcesPage::viewFolder);
@@ -311,6 +312,21 @@ void ExternalResourcesPage::disableItem()
     m_model->setResourceEnabled(selection.indexes(), EnableAction::DISABLE);
 }
 
+void ExternalResourcesPage::pinItem()
+{
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return;
+    }
+    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
+    const QList<Resource*> selectedResources = m_model->selectedResources(selection.indexes());
+    if (selectedResources.isEmpty()) {
+        return;
+    }
+    bool anyUnpinned = std::any_of(selectedResources.begin(), selectedResources.end(),
+                                  [](Resource* r) { return !r->isPinned(); });
+    m_model->setResourcePinned(selection.indexes(), anyUnpinned);
+}
+
 void ExternalResourcesPage::viewHomepage()
 {
     auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
@@ -350,9 +366,20 @@ void ExternalResourcesPage::updateActions()
     ui->actionEnableItem->setEnabled(!isSynced && hasSelection);
     ui->actionDisableItem->setEnabled(!isSynced && hasSelection);
 
+    if (ui->actionPinItem) {
+        ui->actionPinItem->setEnabled(!isSynced && hasSelection);
+        bool allPinned = hasSelection && !selectedResources.isEmpty() &&
+                         std::all_of(selectedResources.begin(), selectedResources.end(),
+                                     [](Resource* r) { return r->isPinned(); });
+        ui->actionPinItem->setText(allPinned ? tr("Un&pin") : tr("&Pin"));
+    }
+
     ui->actionViewHomepage->setEnabled(hasSelection && std::any_of(selectedResources.begin(), selectedResources.end(),
                                                                    [](Resource* resource) { return !resource->homepage().isEmpty(); }));
     ui->actionExportMetadata->setEnabled(!m_model->empty());
+    if (ui->actionListDependencies) {
+        ui->actionListDependencies->setEnabled(!m_model->empty());
+    }
 }
 
 void ExternalResourcesPage::updateFrame(const QModelIndex& current, [[maybe_unused]] const QModelIndex& previous)

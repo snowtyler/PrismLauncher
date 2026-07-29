@@ -234,6 +234,7 @@ void V1::updateModIndex(const QDir& index_dir, Mod& mod)
                                 { "x-prismlauncher-release-type", mod.releaseType.toString().toStdString() },
                                 { "x-prismlauncher-version-number", mod.version_number.toStdString() },
                                 { "x-prismlauncher-dependencies", deps },
+                                { "x-prismlauncher-pinned", mod.pinned },
                                 { "download",
                                   toml::table{
                                       { "mode", mod.mode.toStdString() },
@@ -382,6 +383,8 @@ auto V1::getIndexForMod(const QDir& index_dir, QString slug) -> Mod
             }
         }
     }
+
+    mod.pinned = table["x-prismlauncher-pinned"].value_or(false);
 
     return mod;
 }

@@ -452,9 +452,15 @@ void ResourceUpdateDialog::onMetadataFailed(Resource* resource, bool tryOthers, 
 void ResourceUpdateDialog::appendResource(const CheckUpdateTask::Update& info, QStringList requiredBy)
 {
     auto* itemTop = new QTreeWidgetItem(ui->modTreeWidget);
-    itemTop->setCheckState(0, info.enabled ? Qt::CheckState::Checked : Qt::CheckState::Unchecked);
-    if (!info.enabled) {
-        itemTop->setToolTip(0, tr("Mod was disabled as it may be already installed."));
+    if (info.pinned) {
+        itemTop->setCheckState(0, Qt::CheckState::Unchecked);
+        itemTop->setFlags(itemTop->flags() & ~Qt::ItemIsUserCheckable & ~Qt::ItemIsSelectable);
+        itemTop->setToolTip(0, tr("This mod is pinned and cannot be selected for updating."));
+    } else {
+        itemTop->setCheckState(0, info.enabled ? Qt::CheckState::Checked : Qt::CheckState::Unchecked);
+        if (!info.enabled) {
+            itemTop->setToolTip(0, tr("Mod was disabled as it may be already installed."));
+        }
     }
     itemTop->setText(0, info.name);
     itemTop->setExpanded(true);
@@ -465,7 +471,7 @@ void ResourceUpdateDialog::appendResource(const CheckUpdateTask::Update& info, Q
     providerItem->setData(0, Qt::UserRole, providerName);
 
     auto* oldVersionItem = new QTreeWidgetItem(itemTop);
-    oldVersionItem->setText(0, tr("Old version: %1").arg(info.oldVersion));
+    oldVersionItem->setText(0, info.pinned ? tr("Old version: %1 (Pinned)").arg(info.oldVersion) : tr("Old version: %1").arg(info.oldVersion));
     oldVersionItem->setData(0, Qt::UserRole, info.oldVersion);
 
     auto* newVersionItem = new QTreeWidgetItem(itemTop);

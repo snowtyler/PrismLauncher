@@ -72,6 +72,7 @@ class ModFolderPage : public ExternalResourcesPage {
     void deleteModMetadata();
     void exportModMetadata();
     void changeModVersion();
+    void listDependencies();
 
    protected:
     ModFolderModel* m_model;

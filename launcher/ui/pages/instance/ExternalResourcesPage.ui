@@ -218,8 +218,33 @@
     <string>View the homepages of all selected items.</string>
    </property>
   </action>
- </widget>
- <customwidgets>
+  <action name="actionListDependencies">
+   <property name="text">
+    <string>List &amp;Dependencies</string>
+   </property>
+   <property name="toolTip">
+    <string>List all dependencies of the selected items.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionPinItem">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Pin</string>
+   </property>
+   <property name="toolTip">
+    <string>Pin selected items to prevent automatic updates.</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+   </action>
+  </widget>
+  <customwidgets>
   <customwidget>
    <class>ModListView</class>
    <extends>QTreeView</extends>

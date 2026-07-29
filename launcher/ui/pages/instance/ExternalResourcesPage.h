@@ -55,6 +55,7 @@ class ExternalResourcesPage : public QMainWindow, public BasePage {
 
     virtual void enableItem();
     virtual void disableItem();
+    virtual void pinItem();
 
     virtual void viewHomepage();
 

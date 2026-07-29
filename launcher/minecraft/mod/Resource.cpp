@@ -121,6 +121,20 @@ void Resource::setMetadata(std::shared_ptr<Metadata::ModStruct>&& metadata)
     }
 
     m_metadata = metadata;
+    if (m_metadata) {
+        m_pinned = m_metadata->pinned;
+    }
+}
+
+void Resource::setPinned(bool pinned, const QDir* indexDir)
+{
+    m_pinned = pinned;
+    if (m_metadata) {
+        m_metadata->pinned = pinned;
+        if (indexDir) {
+            Metadata::update(*indexDir, *m_metadata);
+        }
+    }
 }
 
 QStringList Resource::issues() const

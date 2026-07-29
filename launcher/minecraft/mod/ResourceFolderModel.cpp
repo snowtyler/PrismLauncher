@@ -332,6 +332,32 @@ bool ResourceFolderModel::setResourceEnabled(const QModelIndexList& indexes, Ena
     return succeeded;
 }
 
+bool ResourceFolderModel::setResourcePinned(const QModelIndexList& indexes, bool pinned)
+{
+    if (m_instance && m_instance->settings()->get("IsSyncedInstance").toBool()) {
+        return false;
+    }
+
+    if (indexes.isEmpty()) {
+        return true;
+    }
+
+    auto idxDir = indexDir();
+    bool succeeded = true;
+    for (const auto& idx : indexes) {
+        if (!validateIndex(idx)) {
+            continue;
+        }
+
+        int row = idx.row();
+        auto& resource = m_resources[row];
+        resource->setPinned(pinned, &idxDir);
+        emit dataChanged(index(row, 0), index(row, columnCount(QModelIndex()) - 1));
+    }
+
+    return succeeded;
+}
+
 static QMutex s_update_task_mutex;
 bool ResourceFolderModel::update()
 {
@@ -562,6 +588,9 @@ QVariant ResourceFolderModel::data(const QModelIndex& index, int role) const
         case Qt::DisplayRole:
             switch (column) {
                 case NameColumn:
+                    if (m_resources[row]->isPinned()) {
+                        return tr("%1 (Pinned)").arg(m_resources[row]->name());
+                    }
                     return m_resources[row]->name();
                 case DateColumn:
                     return m_resources[row]->dateTimeChanged();
@@ -578,6 +607,9 @@ QVariant ResourceFolderModel::data(const QModelIndex& index, int role) const
             QString tooltip = m_resources[row]->internalId();
 
             if (column == NameColumn) {
+                if (m_resources[row]->isPinned()) {
+                    tooltip += "\n" + tr("This resource is pinned.");
+                }
                 if (APPLICATION->settings()->get("ShowModIncompat").toBool()) {
                     for (const QString& issue : at(row).issues()) {
                         tooltip += "\n" + issue;

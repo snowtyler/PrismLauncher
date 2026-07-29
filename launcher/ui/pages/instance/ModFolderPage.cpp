@@ -62,6 +62,7 @@
 #include "minecraft/VersionFilterData.h"
 #include "minecraft/mod/Mod.h"
 #include "minecraft/mod/ModFolderModel.h"
+#include "modplatform/ModIndex.h"
 
 #include "tasks/ConcurrentTask.h"
 #include "tasks/Task.h"
@@ -108,6 +109,12 @@ ModFolderPage::ModFolderPage(BaseInstance* inst, ModFolderModel* model, QWidget*
     ui->actionExportMetadata->setToolTip(tr("Export mod's metadata to text."));
     connect(ui->actionExportMetadata, &QAction::triggered, this, &ModFolderPage::exportModMetadata);
     ui->actionsToolbar->insertActionAfter(ui->actionViewHomepage, ui->actionExportMetadata);
+
+    ui->actionListDependencies->setToolTip(tr("List all dependencies of the selected mods."));
+    connect(ui->actionListDependencies, &QAction::triggered, this, &ModFolderPage::listDependencies);
+    ui->actionsToolbar->insertActionAfter(ui->actionExportMetadata, ui->actionListDependencies);
+
+    ui->actionsToolbar->insertActionAfter(ui->actionDisableItem, ui->actionPinItem);
 
     ui->actionsToolbar->insertActionAfter(ui->actionViewFolder, ui->actionViewConfigs);
     updateActions();
@@ -384,6 +391,103 @@ void ModFolderPage::exportModMetadata()
     std::ranges::sort(selectedMods, [](const Mod* a, const Mod* b) { return a->name() < b->name(); });
     ExportToModListDialog dlg(m_instance->name(), selectedMods, this);
     dlg.exec();
+}
+
+void ModFolderPage::listDependencies()
+{
+    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selectedMods = m_model->selectedMods(selection);
+    if (selectedMods.isEmpty()) {
+        selectedMods = m_model->allMods();
+    }
+    if (selectedMods.isEmpty()) {
+        return;
+    }
+
+    std::ranges::sort(selectedMods, [](const Mod* a, const Mod* b) { return a->name() < b->name(); });
+
+    QStringList htmlContent;
+    htmlContent.append(tr("<h3>Dependencies (%1):</h3>").arg(selectedMods.size()));
+    htmlContent.append("<hr/>");
+
+    for (const Mod* mod : selectedMods) {
+        if (!mod) {
+            continue;
+        }
+
+        QString modName = mod->name().isEmpty() ? mod->mod_id() : mod->name();
+        if (!mod->version().isEmpty()) {
+            modName += QString(" (%1)").arg(mod->version());
+        }
+
+        htmlContent.append(QString("<p><b>%1</b></p>").arg(modName.toHtmlEscaped()));
+        htmlContent.append("<ul>");
+
+        bool hasDep = false;
+
+        const QStringList declaredDeps = mod->dependencies();
+        if (!declaredDeps.isEmpty()) {
+            hasDep = true;
+            htmlContent.append(QString("<li><b>%1:</b> %2</li>")
+                                   .arg(tr("Declared dependencies"))
+                                   .arg(declaredDeps.join(", ").toHtmlEscaped()));
+        }
+
+        if (mod->metadata() && !mod->metadata()->dependencies.isEmpty()) {
+            QStringList platformDepStrings;
+            for (const auto& dep : mod->metadata()->dependencies) {
+                QString depStr = dep.addonId.toString();
+                if (!dep.version.isEmpty()) {
+                    depStr += QString(" (%1)").arg(dep.version);
+                }
+                switch (dep.type) {
+                    case ModPlatform::DependencyType::REQUIRED:
+                        depStr += QString(" [%1]").arg(tr("Required"));
+                        break;
+                    case ModPlatform::DependencyType::OPTIONAL:
+                        depStr += QString(" [%1]").arg(tr("Optional"));
+                        break;
+                    case ModPlatform::DependencyType::INCOMPATIBLE:
+                        depStr += QString(" [%1]").arg(tr("Incompatible"));
+                        break;
+                    case ModPlatform::DependencyType::EMBEDDED:
+                        depStr += QString(" [%1]").arg(tr("Embedded"));
+                        break;
+                }
+                platformDepStrings.append(depStr);
+            }
+            if (!platformDepStrings.isEmpty()) {
+                hasDep = true;
+                htmlContent.append(QString("<li><b>%1:</b> %2</li>")
+                                       .arg(tr("Platform dependencies"))
+                                       .arg(platformDepStrings.join(", ").toHtmlEscaped()));
+            }
+        }
+
+        const QStringList installedRequires = m_model->requiresList(mod->mod_id());
+        if (!installedRequires.isEmpty()) {
+            hasDep = true;
+            htmlContent.append(QString("<li><b>%1:</b> %2</li>")
+                                   .arg(tr("Installed mods required"))
+                                   .arg(installedRequires.join(", ").toHtmlEscaped()));
+        }
+
+        const QStringList installedRequiredBy = m_model->requiredByList(mod->mod_id());
+        if (!installedRequiredBy.isEmpty()) {
+            hasDep = true;
+            htmlContent.append(QString("<li><b>%1:</b> %2</li>")
+                                   .arg(tr("Installed mods requiring this mod"))
+                                   .arg(installedRequiredBy.join(", ").toHtmlEscaped()));
+        }
+
+        if (!hasDep) {
+            htmlContent.append(QString("<li><i>%1</i></li>").arg(tr("No dependencies found.")));
+        }
+
+        htmlContent.append("</ul>");
+    }
+
+    CustomMessageBox::selectable(this, tr("Mod Dependencies"), htmlContent.join("\n"), QMessageBox::Information)->exec();
 }
 
 CoreModFolderPage::CoreModFolderPage(BaseInstance* inst, ModFolderModel* mods, QWidget* parent) : ModFolderPage(inst, mods, parent)

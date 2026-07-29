@@ -108,6 +108,7 @@ class ResourceFolderModel : public QAbstractListModel {
      *  Returns whether the action was successfully applied to all resources.
      */
     virtual bool setResourceEnabled(const QModelIndexList& indexes, EnableAction action);
+    virtual bool setResourcePinned(const QModelIndexList& indexes, bool pinned);
 
     /** Creates a new update task and start it. Returns false if no update was done, like when an update is already underway. */
     virtual bool update();

@@ -108,6 +108,8 @@ class Resource : public QObject {
     auto internalId() const -> QString { return m_internal_id; }
     auto type() const -> ResourceType { return m_type; }
     bool enabled() const { return m_enabled; }
+    bool isPinned() const { return m_pinned; }
+    void setPinned(bool pinned, const QDir* indexDir = nullptr);
     auto getOriginalFileName() const -> QString;
     QString sizeStr() const { return m_size_str; }
     qint64 sizeInfo() const { return m_size_info; }
@@ -201,6 +203,7 @@ class Resource : public QObject {
 
     /* Whether the resource is enabled (e.g. shows up in the game) or not. */
     bool m_enabled = true;
+    bool m_pinned = false;
 
     QList<const char*> m_issues;
 
