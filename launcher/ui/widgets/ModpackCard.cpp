@@ -286,6 +286,9 @@ void ModpackCard::onSettingsButtonClicked()
         QAction* editAction = menu.addAction(tr("Instance Settings"));
         connect(editAction, &QAction::triggered, [this]() { emit settingsTriggered(m_shortcode); });
 
+        QAction* repairAction = menu.addAction(tr("Repair Instance"));
+        connect(repairAction, &QAction::triggered, [this]() { emit actionTriggered("repair", m_shortcode); });
+
         menu.addSeparator();
 
         QAction* deleteAction = menu.addAction(tr("Delete Instance"));

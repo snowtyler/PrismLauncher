@@ -368,6 +368,8 @@ bool InstanceList::trashInstance(const InstanceId& id)
         m_trashHistory.top().shortcuts.append({ { name, filePath, target }, trashedLoc });
     }
 
+    loadList();
+    emit instancesChanged();
     return true;
 }
 
@@ -416,6 +418,7 @@ bool InstanceList::undoTrashInstance()
     increaseGroupCount(top.groupName);
 
     saveGroupList();
+    loadList();
     emit instancesChanged();
     return ok;
 }
@@ -450,6 +453,9 @@ void InstanceList::deleteInstance(const InstanceId& id)
         }
         qDebug() << "Shortcut" << name << "at path" << filePath << "for instance" << id << "has been deleted by the launcher.";
     }
+
+    loadList();
+    emit instancesChanged();
 }
 
 static QMap<InstanceId, InstanceLocator> getIdMapping(const std::vector<std::unique_ptr<BaseInstance>>& list)

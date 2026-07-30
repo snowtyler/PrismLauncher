@@ -22,7 +22,7 @@ class ScanModFolders : public LaunchStep {
     Q_OBJECT
    public:
     explicit ScanModFolders(LaunchTask* parent) : LaunchStep(parent) {};
-    virtual ~ScanModFolders() {};
+    virtual ~ScanModFolders();
 
     virtual void executeTask() override;
     virtual bool canAbort() const override { return false; }
@@ -38,4 +38,8 @@ class ScanModFolders : public LaunchStep {
     bool m_modsDone = false;
     bool m_nilModsDone = false;
     bool m_coreModsDone = false;
+
+    QMetaObject::Connection m_loadersConn;
+    QMetaObject::Connection m_coresConn;
+    QMetaObject::Connection m_nilsConn;
 };

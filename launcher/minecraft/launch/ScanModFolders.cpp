@@ -45,46 +45,68 @@ void ScanModFolders::executeTask()
     auto m_inst = m_parent->instance();
 
     auto loaders = m_inst->loaderModList();
-    connect(loaders, &ModFolderModel::updateFinished, this, &ScanModFolders::modsDone);
+    m_loadersConn = connect(loaders, &ModFolderModel::updateFinished, this, &ScanModFolders::modsDone);
     if (!loaders->update()) {
         m_modsDone = true;
     }
 
     auto cores = m_inst->coreModList();
-    connect(cores, &ModFolderModel::updateFinished, this, &ScanModFolders::coreModsDone);
+    m_coresConn = connect(cores, &ModFolderModel::updateFinished, this, &ScanModFolders::coreModsDone);
     if (!cores->update()) {
         m_coreModsDone = true;
     }
 
     auto nils = m_inst->nilModList();
-    connect(nils, &ModFolderModel::updateFinished, this, &ScanModFolders::nilModsDone);
+    m_nilsConn = connect(nils, &ModFolderModel::updateFinished, this, &ScanModFolders::nilModsDone);
     if (!nils->update()) {
         m_nilModsDone = true;
     }
     checkDone();
 }
 
+ScanModFolders::~ScanModFolders()
+{
+    disconnect(m_loadersConn);
+    disconnect(m_coresConn);
+    disconnect(m_nilsConn);
+}
+
 void ScanModFolders::modsDone()
 {
+    if (!isRunning()) {
+        return;
+    }
     m_modsDone = true;
     checkDone();
 }
 
 void ScanModFolders::coreModsDone()
 {
+    if (!isRunning()) {
+        return;
+    }
     m_coreModsDone = true;
     checkDone();
 }
 
 void ScanModFolders::nilModsDone()
 {
+    if (!isRunning()) {
+        return;
+    }
     m_nilModsDone = true;
     checkDone();
 }
 
 void ScanModFolders::checkDone()
 {
+    if (!isRunning()) {
+        return;
+    }
     if (m_modsDone && m_coreModsDone && m_nilModsDone) {
+        disconnect(m_loadersConn);
+        disconnect(m_coresConn);
+        disconnect(m_nilsConn);
         emitSucceeded();
     }
 }

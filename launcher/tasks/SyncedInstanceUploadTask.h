@@ -11,10 +11,13 @@
 class SyncedInstanceUploadTask : public Task {
     Q_OBJECT
 public:
-    SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath = QString());
+    SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath = QString(), bool forceConfigOverwrite = false);
     virtual ~SyncedInstanceUploadTask() = default;
 
     bool abort() override;
+
+    void setForceConfigOverwrite(bool force) { m_forceConfigOverwrite = force; }
+    bool forceConfigOverwrite() const { return m_forceConfigOverwrite; }
 
 protected:
     void executeTask() override;
@@ -31,6 +34,7 @@ private:
     QString m_accessKey;
     QString m_secretKey;
     QString m_bannerImagePath;
+    bool m_forceConfigOverwrite = false;
 
     QNetworkReply* m_manifestReply = nullptr;
     QNetworkReply* m_currentActionReply = nullptr;

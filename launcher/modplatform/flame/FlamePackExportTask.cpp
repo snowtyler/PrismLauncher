@@ -82,6 +82,7 @@ void FlamePackExportTask::collectFiles()
 
 void FlamePackExportTask::collectHashes()
 {
+    disconnect(m_options.instance->loaderModList(), &ModFolderModel::updateFinished, this, &FlamePackExportTask::collectHashes);
     setAbortable(true);
     setStatus(tr("Finding file hashes..."));
     setProgress(1, 5);

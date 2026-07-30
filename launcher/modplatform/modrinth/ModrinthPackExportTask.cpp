@@ -93,6 +93,9 @@ void ModrinthPackExportTask::collectFiles()
 
 void ModrinthPackExportTask::collectHashes()
 {
+    if (mcInstance) {
+        disconnect(mcInstance->loaderModList(), &ModFolderModel::updateFinished, this, &ModrinthPackExportTask::collectHashes);
+    }
     setStatus(tr("Finding file hashes..."));
     for (const QFileInfo& file : files) {
         QCoreApplication::processEvents();

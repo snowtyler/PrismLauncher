@@ -22,6 +22,7 @@ public:
     QLineEdit* descriptionEdit;
     QLineEdit* versionEdit;
     QCheckBox* privateCheck;
+    QCheckBox* forceConfigOverwriteCheck;
     QLineEdit* bannerImageEdit;
     QPushButton* bannerBrowseBtn;
     QString bannerImagePath;

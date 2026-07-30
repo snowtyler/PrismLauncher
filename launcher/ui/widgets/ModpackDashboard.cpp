@@ -442,9 +442,12 @@ void ModpackDashboard::onCardActionTriggered(const QString& action, const QStrin
         if (inst) {
             emit launchInstance(inst->id());
         }
-    } else if (action == "update") {
+    } else if (action == "update" || action == "repair") {
         if (inst) {
             auto updateTask = makeShared<SyncedInstanceUpdateTask>(inst);
+            if (action == "repair") {
+                updateTask->setForceRepair(true);
+            }
             ProgressDialog updateDialog(this);
             updateDialog.execWithTask(updateTask.get());
 
@@ -454,8 +457,11 @@ void ModpackDashboard::onCardActionTriggered(const QString& action, const QStrin
                     card->updateStatus();
                 }
                 applyFilter();
+                if (action == "repair") {
+                    QMessageBox::information(this, tr("Repair Complete"), tr("The instance has been repaired successfully. All missing or damaged files were restored."));
+                }
             } else if (!updateTask->failReason().isEmpty()) {
-                QMessageBox::critical(this, tr("Update Failed"), updateTask->failReason());
+                QMessageBox::critical(this, action == "repair" ? tr("Repair Failed") : tr("Update Failed"), updateTask->failReason());
             }
         }
     } else if (action == "delete") {
@@ -559,12 +565,18 @@ void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& m
     if (version.isEmpty()) version = "1.0.0";
 
     auto mcVer = std::make_shared<SimpleVersion>(mcVersion);
-    auto task = std::make_unique<VanillaCreationTask>(mcVer);
-    task->setName(packName);
-    task->setGroup("Synced Modpacks");
+    auto rawTask = new VanillaCreationTask(mcVer);
+    rawTask->setName(packName);
+    rawTask->setGroup("Synced Modpacks");
+
+    unique_qobject_ptr<Task> task(APPLICATION->instances()->wrapInstanceTask(rawTask));
 
     ProgressDialog dialog(this);
     dialog.execWithTask(task.get());
+
+    if (!task->wasSuccessful()) {
+        return;
+    }
 
     // Post-process created instance
     BaseInstance* inst = nullptr;
@@ -578,8 +590,6 @@ void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& m
     if (inst) {
         inst->settings()->set("IsSyncedInstance", true);
         inst->settings()->set("SyncShortcode", shortcode);
-        inst->settings()->set("SyncVersion", version);
-        inst->settings()->set("SyncVersionName", version);
         inst->saveNow();
 
         // Perform initial sync
@@ -590,3 +600,4 @@ void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& m
         refreshDashboard();
     }
 }
+

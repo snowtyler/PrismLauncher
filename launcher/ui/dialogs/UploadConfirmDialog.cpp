@@ -71,6 +71,12 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
     privateCheck = new QCheckBox(tr("Private Modpack (Hidden from discovery)"), this);
     privateCheck->setChecked(inst->settings()->get("SyncIsPrivate").toBool());
     formLayout->addRow(privateCheck);
+
+    forceConfigOverwriteCheck = new QCheckBox(tr("Force client config update (overwrites options.txt)"), this);
+    forceConfigOverwriteCheck->setToolTip(tr("When checked, clients will be forced to redownload options.txt during this update instead of keeping local changes."));
+    forceConfigOverwriteCheck->setChecked(false);
+    formLayout->addRow(forceConfigOverwriteCheck);
+
     mainLayout->addLayout(formLayout);
 
     // File selection checklist tree view
