@@ -62,12 +62,30 @@ std::tuple<int, int> map_int_zero_max(T current, T range_max, T range_min)
 ProgressDialog::ProgressDialog(QWidget* parent) : QDialog(parent), ui(new Ui::ProgressDialog)
 {
     ui->setupUi(this);
-    ui->taskProgressScrollArea->setHidden(true);
+    ui->detailsContainer->setVisible(false);
+    ui->taskProgressScrollArea->setVisible(false);
     this->setWindowFlags(this->windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setAttribute(Qt::WidgetAttribute::WA_QuitOnClose, true);
     changeProgress(0, 100);
-    updateSize(true);
     setSkipButton(false);
+
+    ui->detailsButton->setStyleSheet(R"(
+        QPushButton {
+            color: #9CA3AF;
+            font-size: 11px;
+            text-align: left;
+            padding: 2px 4px;
+            border: none;
+            background: transparent;
+        }
+        QPushButton:hover {
+            color: #E2E8F0;
+            text-decoration: underline;
+        }
+    )");
+    ui->globalStatusDetailsLabel->setStyleSheet("color: #9CA3AF; font-size: 11px; padding: 4px 0px;");
+
+    updateSize(true);
 }
 
 void ProgressDialog::setSkipButton(bool present, QString label)
@@ -78,14 +96,21 @@ void ProgressDialog::setSkipButton(bool present, QString label)
     ui->skipButton->setEnabled(present);
     ui->skipButton->setVisible(present);
     ui->skipButton->setText(label);
-    updateSize();
+    updateSize(false);
 }
 
-void ProgressDialog::on_skipButton_clicked(bool checked)
+void ProgressDialog::on_skipButton_clicked([[maybe_unused]] bool checked)
 {
-    Q_UNUSED(checked);
-    if (ui->skipButton->isEnabled())  // prevent other triggers from aborting
+    if (ui->skipButton->isEnabled() && m_task)
         m_task->abort();
+}
+
+void ProgressDialog::on_detailsButton_clicked()
+{
+    m_detailsExpanded = !m_detailsExpanded;
+    ui->detailsContainer->setVisible(m_detailsExpanded);
+    ui->detailsButton->setText(m_detailsExpanded ? tr("Hide Details ▲") : tr("More Details ▼"));
+    updateSize(false);
 }
 
 ProgressDialog::~ProgressDialog()
@@ -98,33 +123,16 @@ ProgressDialog::~ProgressDialog()
 
 void ProgressDialog::updateSize(bool recenterParent)
 {
-    QSize lastSize = this->size();
-    QPoint lastPos = this->pos();
-    int minHeight = ui->globalStatusDetailsLabel->minimumSize().height() + (ui->verticalLayout->spacing() * 2);
-    minHeight += ui->globalProgressBar->minimumSize().height() + ui->verticalLayout->spacing();
-    if (!ui->taskProgressScrollArea->isHidden())
-        minHeight += ui->taskProgressScrollArea->minimumSizeHint().height() + ui->verticalLayout->spacing();
-    if (ui->skipButton->isVisible())
-        minHeight += ui->skipButton->height() + ui->verticalLayout->spacing();
-    minHeight = std::max(minHeight, 60);
-    QSize minSize = QSize(480, minHeight);
-
-    setMinimumSize(minSize);
     adjustSize();
 
-    QSize newSize = this->size();
-    // if the current window is a different size
-    auto parent = this->parentWidget();
-    if (recenterParent && parent) {
-        auto newX = std::max(0, parent->x() + ((parent->width() - newSize.width()) / 2));
-        auto newY = std::max(0, parent->y() + ((parent->height() - newSize.height()) / 2));
-        this->move(newX, newY);
-    } else if (lastSize != newSize) {
-        // center on old position after resize
-        QSize sizeDiff = lastSize - newSize;  // last size was smaller, the results should be negative
-        auto newX = std::max(0, lastPos.x() + (sizeDiff.width() / 2));
-        auto newY = std::max(0, lastPos.y() + (sizeDiff.height() / 2));
-        this->move(newX, newY);
+    if (recenterParent) {
+        auto parent = this->parentWidget();
+        QSize newSize = this->size();
+        if (parent) {
+            auto newX = std::max(0, parent->x() + ((parent->width() - newSize.width()) / 2));
+            auto newY = std::max(0, parent->y() + ((parent->height() - newSize.height()) / 2));
+            this->move(newX, newY);
+        }
     }
 }
 
@@ -155,8 +163,8 @@ int ProgressDialog::execWithTask(Task* task)
     this->m_taskConnections.push_back(connect(task, &Task::abortButtonTextChanged, ui->skipButton, &QPushButton::setText));
 
     m_is_multi_step = task->isMultiStep();
-    ui->taskProgressScrollArea->setHidden(!m_is_multi_step);
-    updateSize();
+    ui->taskProgressScrollArea->setVisible(m_is_multi_step);
+    updateSize(true);
 
     // It's a good idea to start the task after we entered the dialog's event loop :^)
     if (!task->isRunning()) {
@@ -215,12 +223,12 @@ void ProgressDialog::onTaskSucceeded()
 
 void ProgressDialog::changeStatus([[maybe_unused]] const QString& status)
 {
-    ui->globalStatusLabel->setText(m_task->getStatus());
-    ui->globalStatusLabel->adjustSize();
-    ui->globalStatusDetailsLabel->setText(m_task->getDetails());
-    ui->globalStatusDetailsLabel->adjustSize();
-
-    updateSize();
+    if (m_task) {
+        ui->globalStatusLabel->setText(m_task->getStatus());
+        QString details = m_task->getDetails();
+        ui->globalStatusDetailsLabel->setText(details);
+        ui->globalStatusDetailsLabel->setVisible(!details.isEmpty());
+    }
 }
 
 void ProgressDialog::addTaskProgress(TaskStepProgress const& progress)
@@ -233,10 +241,7 @@ void ProgressDialog::addTaskProgress(TaskStepProgress const& progress)
 void ProgressDialog::changeStepProgress(TaskStepProgress const& task_progress)
 {
     m_is_multi_step = true;
-    if (ui->taskProgressScrollArea->isHidden()) {
-        ui->taskProgressScrollArea->setHidden(false);
-        updateSize();
-    }
+    ui->taskProgressScrollArea->setVisible(true);
 
     if (!taskProgress.contains(task_progress.uid))
         addTaskProgress(task_progress);

@@ -569,7 +569,9 @@ void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& m
     rawTask->setName(packName);
     rawTask->setGroup("Synced Modpacks");
 
-    unique_qobject_ptr<Task> task(APPLICATION->instances()->wrapInstanceTask(rawTask));
+    QString committedInstId;
+    QString syncedDir = APPLICATION->instances()->syncedInstDir();
+    unique_qobject_ptr<Task> task(APPLICATION->instances()->wrapInstanceTask(rawTask, syncedDir, &committedInstId));
 
     ProgressDialog dialog(this);
     dialog.execWithTask(task.get());
@@ -578,14 +580,8 @@ void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& m
         return;
     }
 
-    // Post-process created instance
-    BaseInstance* inst = nullptr;
-    for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
-        if (APPLICATION->instances()->at(i)->name() == packName) {
-            inst = APPLICATION->instances()->at(i);
-            break;
-        }
-    }
+    // Post-process created instance using committed ID
+    BaseInstance* inst = APPLICATION->instances()->getInstanceById(committedInstId);
 
     if (inst) {
         inst->settings()->set("IsSyncedInstance", true);

@@ -80,16 +80,6 @@ InstanceList::InstanceList(SettingsObject* settings, const QString& instDir, QOb
     m_watcher = new QFileSystemWatcher(this);
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &InstanceList::instanceDirContentsChanged);
     m_watcher->addPath(m_instDir);
-    m_watcher->addPath(syncedInstDir());
-}
-
-QString InstanceList::syncedInstDir() const
-{
-    QDir instDirObj(m_instDir);
-    instDirObj.cdUp();
-    QString syncedDir = instDirObj.absoluteFilePath("synced_instances");
-    QDir().mkpath(syncedDir);
-    return syncedDir;
 }
 
 InstanceList::~InstanceList() {}
@@ -378,8 +368,6 @@ bool InstanceList::trashInstance(const InstanceId& id)
         m_trashHistory.top().shortcuts.append({ { name, filePath, target }, trashedLoc });
     }
 
-    loadList();
-    emit instancesChanged();
     return true;
 }
 
@@ -428,7 +416,6 @@ bool InstanceList::undoTrashInstance()
     increaseGroupCount(top.groupName);
 
     saveGroupList();
-    loadList();
     emit instancesChanged();
     return ok;
 }
@@ -463,9 +450,6 @@ void InstanceList::deleteInstance(const InstanceId& id)
         }
         qDebug() << "Shortcut" << name << "at path" << filePath << "for instance" << id << "has been deleted by the launcher.";
     }
-
-    loadList();
-    emit instancesChanged();
 }
 
 static QMap<InstanceId, InstanceLocator> getIdMapping(const std::vector<std::unique_ptr<BaseInstance>>& list)
@@ -506,9 +490,12 @@ QList<InstanceId> InstanceList::discoverInstances()
     }
 
     // 2. Scan synced instances directory
-    QString syncedDir = syncedInstDir();
+    QDir instDirObj(m_instDir);
+    instDirObj.cdUp();
+    QString syncedInstDir = instDirObj.absoluteFilePath("synced_instances");
+    QDir().mkpath(syncedInstDir);
     
-    QDirIterator syncedIter(syncedDir, QDir::Dirs | QDir::NoDot | QDir::NoDotDot | QDir::Readable | QDir::Hidden, QDirIterator::FollowSymlinks);
+    QDirIterator syncedIter(syncedInstDir, QDir::Dirs | QDir::NoDot | QDir::NoDotDot | QDir::Readable | QDir::Hidden, QDirIterator::FollowSymlinks);
     while (syncedIter.hasNext()) {
         QString subDir = syncedIter.next();
         QFileInfo dirInfo(subDir);
@@ -692,7 +679,10 @@ std::unique_ptr<BaseInstance> InstanceList::loadInstance(const InstanceId& id)
 
     auto instanceRoot = FS::PathCombine(m_instDir, id);
     if (!QFileInfo(FS::PathCombine(instanceRoot, "instance.cfg")).exists()) {
-        QString altRoot = FS::PathCombine(syncedInstDir(), id);
+        QDir instDirObj(m_instDir);
+        instDirObj.cdUp();
+        QString syncedInstDir = instDirObj.absoluteFilePath("synced_instances");
+        QString altRoot = FS::PathCombine(syncedInstDir, id);
         if (QFileInfo(FS::PathCombine(altRoot, "instance.cfg")).exists()) {
             instanceRoot = altRoot;
         }
@@ -939,8 +929,8 @@ class InstanceStaging : public Task {
     const unsigned maxBackoff = 16;
 
    public:
-    InstanceStaging(InstanceList* parent, InstanceTask* child, SettingsObject* settings, const QString& customInstDir = QString(), QString* committedId = nullptr)
-        : m_parent(parent), m_customInstDir(customInstDir), m_committedIdOut(committedId), backoff(minBackoff, maxBackoff)
+    InstanceStaging(InstanceList* parent, InstanceTask* child, SettingsObject* settings, const QString& customInstDir = QString())
+        : m_parent(parent), m_customInstDir(customInstDir), backoff(minBackoff, maxBackoff)
     {
         m_stagingPath = parent->getStagedInstancePath(customInstDir);
 
@@ -990,11 +980,7 @@ class InstanceStaging : public Task {
     void childSucceeded()
     {
         unsigned sleepTime = backoff();
-        QString committedId;
-        if (m_parent->commitStagedInstance(m_stagingPath, *m_child, m_child->group(), *m_child, m_customInstDir, &committedId)) {
-            if (m_committedIdOut) {
-                *m_committedIdOut = committedId;
-            }
+        if (m_parent->commitStagedInstance(m_stagingPath, *m_child, m_child->group(), *m_child, m_customInstDir)) {
             m_backoffTimer.stop();
             emitSucceeded();
             return;
@@ -1025,7 +1011,6 @@ class InstanceStaging : public Task {
    private:
     InstanceList* m_parent;
     QString m_customInstDir;
-    QString* m_committedIdOut;
     /*
      * WHY: the whole reason why this uses an exponential backoff retry scheme is antivirus on Windows.
      * Basically, it starts messing things up while the launcher is extracting/creating instances
@@ -1037,9 +1022,9 @@ class InstanceStaging : public Task {
     QTimer m_backoffTimer;
 };
 
-Task* InstanceList::wrapInstanceTask(InstanceTask* task, const QString& customInstDir, QString* committedId)
+Task* InstanceList::wrapInstanceTask(InstanceTask* task, const QString& customInstDir)
 {
-    return new InstanceStaging(this, task, m_globalSettings, customInstDir, committedId);
+    return new InstanceStaging(this, task, m_globalSettings, customInstDir);
 }
 
 QString InstanceList::getStagedInstancePath(const QString& customInstDir)
@@ -1070,8 +1055,7 @@ bool InstanceList::commitStagedInstance(const QString& path,
                                         const InstanceName& instanceName,
                                         QString groupName,
                                         const InstanceTask& commiting,
-                                        const QString& customInstDir,
-                                        QString* outInstId)
+                                        const QString& customInstDir)
 {
     QString targetDir = customInstDir.isEmpty() ? m_instDir : customInstDir;
 
@@ -1093,10 +1077,6 @@ bool InstanceList::commitStagedInstance(const QString& path,
     }
 
     Q_ASSERT(!instID.isEmpty());
-
-    if (outInstId) {
-        *outInstId = instID;
-    }
 
     {
         WatchLock lock(m_watcher, targetDir);

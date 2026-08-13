@@ -13,6 +13,9 @@
 #include <QDebug>
 #include <QDateTime>
 
+#include <QtConcurrent>
+#include <QThreadPool>
+
 SyncedInstanceUploadTask::SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath, bool forceConfigOverwrite)
     : Task(true), m_instance(instance), m_accessKey(accessKey), m_secretKey(secretKey), m_bannerImagePath(bannerImagePath), m_forceConfigOverwrite(forceConfigOverwrite), m_selectedFiles(selectedFiles)
 {
@@ -32,6 +35,8 @@ SyncedInstanceUploadTask::SyncedInstanceUploadTask(BaseInstance* instance, const
 
 bool SyncedInstanceUploadTask::abort()
 {
+    m_aborted = true;
+    m_diffWatcher.cancel();
     if (m_manifestReply) {
         m_manifestReply->abort();
         return true;
@@ -40,7 +45,7 @@ bool SyncedInstanceUploadTask::abort()
         m_currentActionReply->abort();
         return true;
     }
-    return false;
+    return true;
 }
 
 void SyncedInstanceUploadTask::executeTask()
@@ -80,6 +85,11 @@ void SyncedInstanceUploadTask::remoteManifestFetched()
     auto reply = m_manifestReply;
     m_manifestReply = nullptr;
 
+    if (m_aborted) {
+        emitAborted();
+        return;
+    }
+
     QMap<QString, QString> remoteHashes;
 
     // A 404 error is acceptable; it means this is a new modpack upload
@@ -97,49 +107,103 @@ void SyncedInstanceUploadTask::remoteManifestFetched()
         qDebug() << "Manifest fetch returned error or 404 (acceptable for new packs):" << reply->errorString();
     }
 
-    m_actions.clear();
-    m_finalFiles = QJsonArray();
+    setStatus(tr("Comparing files and computing checksums..."));
+    setProgress(0, m_selectedFiles.size());
 
+    connect(&m_diffWatcher, &QFutureWatcher<DiffResult>::finished, this, &SyncedInstanceUploadTask::diffComputed, Qt::UniqueConnection);
+    QFuture<DiffResult> future = QtConcurrent::run(QThreadPool::globalInstance(), [this, remoteHashes]() {
+        return computeDiff(remoteHashes);
+    });
+    m_diffWatcher.setFuture(future);
+}
+
+SyncedInstanceUploadTask::DiffResult SyncedInstanceUploadTask::computeDiff(const QMap<QString, QString>& remoteHashes)
+{
+    DiffResult result;
     QSet<QString> localRelPaths;
+    int total = m_selectedFiles.size();
 
-    // Use selected files
-    for (const QString& relPath : m_selectedFiles) {
+    for (int i = 0; i < total; ++i) {
+        if (m_aborted) {
+            result.error = tr("Upload aborted.");
+            return result;
+        }
+
+        const QString& relPath = m_selectedFiles[i];
         QString absPath = m_instance->instanceRoot() + "/" + relPath;
-        QFile file(absPath);
-        if (!file.open(QFile::ReadOnly)) {
+        QFileInfo fi(absPath);
+        if (!fi.exists() || !fi.isFile()) {
             continue;
         }
-        QByteArray data = file.readAll();
-        localRelPaths.insert(relPath);
 
-        QString localHash = Hashing::hash(data, Hashing::Algorithm::Sha1).toLower();
+        QString localHash = Hashing::hash(absPath, Hashing::Algorithm::Sha1).toLower();
+        if (localHash.isEmpty()) {
+            continue;
+        }
+
+        localRelPaths.insert(relPath);
 
         QJsonObject fileObj;
         fileObj["path"] = relPath;
         fileObj["hash"] = localHash;
-        fileObj["size"] = data.size();
-        m_finalFiles.append(fileObj);
+        fileObj["size"] = fi.size();
+        result.finalFiles.append(fileObj);
 
         if (!remoteHashes.contains(relPath) || remoteHashes[relPath] != localHash) {
-            m_actions.append({"PUT", relPath, data});
+            result.actions.append({"PUT", relPath});
+        }
+
+        if (i % 5 == 0 || i == total - 1) {
+            setStatus(tr("Comparing files (%1/%2): %3").arg(QString::number(i + 1), QString::number(total), fi.fileName()));
+            setDetails(relPath);
+            setProgress(i + 1, total);
         }
     }
 
-    // Determine files to delete (any file that was in the remote manifest but is NOT in the selected files list)
-    for (auto remoteIt = remoteHashes.begin(); remoteIt != remoteHashes.end(); ++remoteIt) {
-        QString relPath = remoteIt.key();
+    // Determine files to delete (files in remote manifest not in local selected files)
+    for (auto it = remoteHashes.begin(); it != remoteHashes.end(); ++it) {
+        if (m_aborted) {
+            result.error = tr("Upload aborted.");
+            return result;
+        }
+        QString relPath = it.key();
         if (!localRelPaths.contains(relPath)) {
-            m_actions.append({"DELETE", relPath, QByteArray()});
+            result.actions.append({"DELETE", relPath});
         }
     }
 
-    qDebug() << "Sync plan generated: PUT actions =" << m_actions.size();
+    result.success = true;
+    return result;
+}
+
+void SyncedInstanceUploadTask::diffComputed()
+{
+    if (m_aborted) {
+        emitAborted();
+        return;
+    }
+
+    DiffResult result = m_diffWatcher.result();
+    if (!result.success) {
+        emitFailed(result.error.isEmpty() ? tr("Failed to compute file diff.") : result.error);
+        return;
+    }
+
+    m_finalFiles = result.finalFiles;
+    m_actions = result.actions;
+
+    qDebug() << "Sync plan generated: total actions =" << m_actions.size();
     m_actionIndex = 0;
     performSync();
 }
 
 void SyncedInstanceUploadTask::performSync()
 {
+    if (m_aborted) {
+        emitAborted();
+        return;
+    }
+
     if (m_actionIndex >= m_actions.size()) {
         qDebug() << "Syncing files complete, now uploading manifest.";
         uploadManifest();
@@ -147,8 +211,10 @@ void SyncedInstanceUploadTask::performSync()
     }
 
     SyncAction action = m_actions[m_actionIndex];
+    QString fileName = QFileInfo(action.relPath).fileName();
     setStatus(tr("Syncing files (%1/%2): %3 %4")
-              .arg(QString::number(m_actionIndex + 1), QString::number(m_actions.size()), action.type, action.relPath));
+              .arg(QString::number(m_actionIndex + 1), QString::number(m_actions.size()), action.type, fileName));
+    setDetails(action.relPath);
     setProgress(m_actionIndex, m_actions.size());
 
     // Build signed PUT/DELETE request using canonical percent-encoding
@@ -159,16 +225,31 @@ void SyncedInstanceUploadTask::performSync()
     }
     QUrl url = QUrl::fromEncoded(m_endpoint.toUtf8() + encodedPath);
 
-    SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, action.data, m_accessKey, m_secretKey);
-
-    QNetworkRequest req(url);
-    for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
-        req.setRawHeader(it.key(), it.value());
-    }
-
     if (action.type == "PUT") {
-        m_currentActionReply = APPLICATION->network()->put(req, action.data);
+        QString absPath = m_instance->instanceRoot() + "/" + action.relPath;
+        QFile file(absPath);
+        if (!file.open(QFile::ReadOnly)) {
+            emitFailed(tr("Failed to read file for upload: %1").arg(action.relPath));
+            return;
+        }
+        QByteArray data = file.readAll();
+
+        SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, data, m_accessKey, m_secretKey);
+
+        QNetworkRequest req(url);
+        for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
+            req.setRawHeader(it.key(), it.value());
+        }
+
+        m_currentActionReply = APPLICATION->network()->put(req, data);
     } else {
+        SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, QByteArray(), m_accessKey, m_secretKey);
+
+        QNetworkRequest req(url);
+        for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
+            req.setRawHeader(it.key(), it.value());
+        }
+
         m_currentActionReply = APPLICATION->network()->deleteResource(req);
     }
 
@@ -197,6 +278,7 @@ void SyncedInstanceUploadTask::actionFinished()
 void SyncedInstanceUploadTask::uploadManifest()
 {
     setStatus(tr("Uploading manifest file..."));
+    setDetails("shortcodes/" + m_shortcode + ".json");
 
     // Build the manifest JSON
     QJsonObject docObj;
@@ -303,6 +385,7 @@ void SyncedInstanceUploadTask::manifestUploaded()
 void SyncedInstanceUploadTask::uploadBanner()
 {
     setStatus(tr("Uploading banner image..."));
+    setDetails("banners/" + m_shortcode + ".png");
 
     QFile file(m_bannerImagePath);
     if (!file.open(QFile::ReadOnly)) {
@@ -350,6 +433,7 @@ void SyncedInstanceUploadTask::bannerUploaded()
 void SyncedInstanceUploadTask::fetchRegistry()
 {
     setStatus(tr("Fetching registry to update list..."));
+    setDetails("registry.json");
 
     QString publicUrl = m_publicUrl;
     if (!publicUrl.endsWith('/')) {
@@ -386,10 +470,7 @@ void SyncedInstanceUploadTask::registryFetched()
     }
 
     QString name = m_instance->name();
-    QString desc = m_instance->settings()->get("ExportSummary").toString();
-    if (desc.isEmpty()) {
-        desc = "A synced custom modpack.";
-    }
+    QString desc = m_instance->settings()->get("ExportSummary").toString().trimmed();
     QString ver = m_instance->settings()->get("ExportVersion").toString();
     if (ver.isEmpty()) {
         ver = "1.0.0";
@@ -416,6 +497,16 @@ void SyncedInstanceUploadTask::registryFetched()
         QJsonObject pack = packs[i].toObject();
         if (pack["shortcode"].toString() == m_shortcode) {
             pack["name"] = name;
+
+            // If local description is left empty, default to existing remote description on server
+            if (desc.isEmpty() && pack.contains("description") && !pack["description"].toString().trimmed().isEmpty()) {
+                desc = pack["description"].toString().trimmed();
+                m_instance->settings()->set("ExportSummary", desc);
+            }
+            if (desc.isEmpty()) {
+                desc = tr("A synced custom modpack.");
+            }
+
             pack["description"] = desc;
             pack["version"] = ver;
             pack["game_version"] = mcVer;
@@ -432,6 +523,9 @@ void SyncedInstanceUploadTask::registryFetched()
     }
 
     if (!found) {
+        if (desc.isEmpty()) {
+            desc = tr("A synced custom modpack.");
+        }
         QJsonObject pack;
         pack["shortcode"] = m_shortcode;
         pack["name"] = name;
@@ -452,6 +546,7 @@ void SyncedInstanceUploadTask::registryFetched()
 void SyncedInstanceUploadTask::uploadRegistry(const QByteArray& registryData)
 {
     setStatus(tr("Uploading registry file..."));
+    setDetails("registry.json");
 
     QStringList segments = (m_bucket + "/registry.json").split('/', Qt::SkipEmptyParts);
     QByteArray encodedPath;
@@ -486,6 +581,7 @@ void SyncedInstanceUploadTask::uploadRegistry(const QByteArray& registryData)
         m_instance->saveNow();
 
         setStatus(tr("Syncing completed successfully!"));
+        setDetails("");
         emitSucceeded();
     });
 }

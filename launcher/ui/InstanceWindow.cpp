@@ -155,6 +155,12 @@ void InstanceWindow::updateButtons()
     m_launchButton->setEnabled(m_instance->canLaunch());
     m_killButton->setEnabled(m_instance->isRunning());
 
+    if (m_instance->settings()->get("IsSyncedInstance").toBool() && m_instance->isRunning()) {
+        m_launchButton->setText(tr("Running"));
+    } else {
+        m_launchButton->setText(tr("&Launch"));
+    }
+
     QMenu* launchMenu = m_launchButton->menu();
     if (launchMenu)
         launchMenu->clear();

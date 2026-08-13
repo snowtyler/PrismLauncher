@@ -198,6 +198,7 @@ void ModpackCard::updateStatus()
     if (!inst) {
         m_status = PackStatus::Install;
         m_actionButton->setText(tr("INSTALL"));
+        m_actionButton->setEnabled(true);
         m_actionButton->setStyleSheet(R"(
             QPushButton {
                 background-color: #3B82F6;
@@ -211,43 +212,64 @@ void ModpackCard::updateStatus()
             QPushButton:hover { background-color: #2563EB; }
         )");
         m_updateSubLabel->hide();
-    } else if (inst->hasUpdateAvailable()) {
-        m_status = PackStatus::Update;
-        QString targetVer = inst->modpackUpdateVersion();
-        if (targetVer.isEmpty()) targetVer = "v1.2.1";
-        else if (!targetVer.startsWith('v')) targetVer = "v" + targetVer;
-
-        m_actionButton->setText(tr("UPDATE (%1)").arg(targetVer));
-        m_actionButton->setStyleSheet(R"(
-            QPushButton {
-                background-color: #67E8F9;
-                color: #0F172A;
-                font-weight: bold;
-                font-size: 13px;
-                border: none;
-                border-radius: 8px;
-                padding: 9px;
-            }
-            QPushButton:hover { background-color: #22D3EE; }
-        )");
-        m_updateSubLabel->setText(tr("An update is available."));
-        m_updateSubLabel->show();
     } else {
-        m_status = PackStatus::Play;
-        m_actionButton->setText(tr("PLAY"));
-        m_actionButton->setStyleSheet(R"(
-            QPushButton {
-                background-color: #86EFAC;
-                color: #0F172A;
-                font-weight: bold;
-                font-size: 13px;
-                border: none;
-                border-radius: 8px;
-                padding: 9px;
-            }
-            QPushButton:hover { background-color: #4ADE80; }
-        )");
-        m_updateSubLabel->hide();
+        connect(inst, &BaseInstance::runningStatusChanged, this, &ModpackCard::updateStatus, Qt::UniqueConnection);
+        if (inst->isRunning()) {
+            m_status = PackStatus::Running;
+            m_actionButton->setText(tr("Running"));
+            m_actionButton->setEnabled(false);
+            m_actionButton->setStyleSheet(R"(
+                QPushButton {
+                    background-color: #4B5263;
+                    color: #9CA3AF;
+                    font-weight: bold;
+                    font-size: 13px;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 9px;
+                }
+            )");
+            m_updateSubLabel->hide();
+        } else if (inst->hasUpdateAvailable()) {
+            m_status = PackStatus::Update;
+            m_actionButton->setEnabled(true);
+            QString targetVer = inst->modpackUpdateVersion();
+            if (targetVer.isEmpty()) targetVer = "v1.2.1";
+            else if (!targetVer.startsWith('v')) targetVer = "v" + targetVer;
+
+            m_actionButton->setText(tr("UPDATE (%1)").arg(targetVer));
+            m_actionButton->setStyleSheet(R"(
+                QPushButton {
+                    background-color: #67E8F9;
+                    color: #0F172A;
+                    font-weight: bold;
+                    font-size: 13px;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 9px;
+                }
+                QPushButton:hover { background-color: #22D3EE; }
+            )");
+            m_updateSubLabel->setText(tr("An update is available."));
+            m_updateSubLabel->show();
+        } else {
+            m_status = PackStatus::Play;
+            m_actionButton->setEnabled(true);
+            m_actionButton->setText(tr("PLAY"));
+            m_actionButton->setStyleSheet(R"(
+                QPushButton {
+                    background-color: #86EFAC;
+                    color: #0F172A;
+                    font-weight: bold;
+                    font-size: 13px;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 9px;
+                }
+                QPushButton:hover { background-color: #4ADE80; }
+            )");
+            m_updateSubLabel->hide();
+        }
     }
 }
 
@@ -257,7 +279,7 @@ void ModpackCard::onActionButtonClicked()
         emit actionTriggered("install", m_shortcode);
     } else if (m_status == PackStatus::Update) {
         emit actionTriggered("update", m_shortcode);
-    } else {
+    } else if (m_status == PackStatus::Play) {
         emit actionTriggered("play", m_shortcode);
     }
 }
@@ -280,8 +302,14 @@ void ModpackCard::onSettingsButtonClicked()
 
     BaseInstance* inst = getLocalInstance();
     if (inst) {
-        QAction* playAction = menu.addAction(tr("Play Instance"));
-        connect(playAction, &QAction::triggered, [this]() { emit actionTriggered("play", m_shortcode); });
+        QAction* playAction = nullptr;
+        if (inst->isRunning()) {
+            playAction = menu.addAction(tr("Running"));
+            playAction->setEnabled(false);
+        } else {
+            playAction = menu.addAction(tr("Play Instance"));
+            connect(playAction, &QAction::triggered, [this]() { emit actionTriggered("play", m_shortcode); });
+        }
 
         QAction* editAction = menu.addAction(tr("Instance Settings"));
         connect(editAction, &QAction::triggered, [this]() { emit settingsTriggered(m_shortcode); });

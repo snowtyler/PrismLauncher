@@ -761,11 +761,16 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
                     m_selectedInstance->settings()->set("IsSyncedInstance", false);
                     m_selectedInstance->saveNow();
 
-                    if (FS::move(oldRoot, newRoot)) {
-                        APPLICATION->instances()->loadList();
-                        QMessageBox::information(this, tr("Success"), tr("Instance reverted to a normal instance and moved back to standard instances directory."));
+                    if (oldRoot != newRoot) {
+                        if (FS::move(oldRoot, newRoot)) {
+                            APPLICATION->instances()->loadList();
+                            QMessageBox::information(this, tr("Success"), tr("Instance reverted to a normal instance and moved back to standard instances directory."));
+                        } else {
+                            QMessageBox::warning(this, tr("Warning"), tr("Instance reverted, but failed to move the directory."));
+                        }
                     } else {
-                        QMessageBox::warning(this, tr("Warning"), tr("Instance reverted, but failed to move the directory."));
+                        APPLICATION->instances()->loadList();
+                        QMessageBox::information(this, tr("Success"), tr("Instance reverted to a normal instance."));
                     }
 
                     if (dashboard) {
@@ -828,7 +833,10 @@ void MainWindow::updateLaunchButton()
         launchMenu = new QMenu(this);
 
     if (m_selectedInstance) {
-        if (m_selectedInstance->hasUpdateAvailable()) {
+        if (m_selectedInstance->settings()->get("IsSyncedInstance").toBool() && m_selectedInstance->isRunning()) {
+            ui->actionLaunchInstance->setText(tr("Running"));
+            ui->actionLaunchInstance->setToolTip(tr("The selected synced instance is currently running."));
+        } else if (m_selectedInstance->hasUpdateAvailable()) {
             ui->actionLaunchInstance->setText(tr("&Update"));
             ui->actionLaunchInstance->setToolTip(tr("Update %1 to version %2")
                                                      .arg(m_selectedInstance->name(), m_selectedInstance->modpackUpdateVersion()));

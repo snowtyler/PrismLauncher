@@ -88,4 +88,4 @@ if %NSIS_ERROR% neq 0 (
 )
 
 echo [SUCCESS] Build and packaging complete!
-echo [SUCCESS] Installer file created at: PrismLauncher-Setup.exe
+echo [SUCCESS] Installer file created at: PrismSync-Setup-12.0.0.exe

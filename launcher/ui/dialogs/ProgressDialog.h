@@ -79,7 +79,8 @@ class ProgressDialog : public QDialog {
     void changeStepProgress(TaskStepProgress const& task_progress);
 
    private slots:
-    void on_skipButton_clicked(bool checked);
+    void on_skipButton_clicked(bool checked = false);
+    void on_detailsButton_clicked();
 
    protected:
     virtual void keyPressEvent(QKeyEvent* e);
@@ -97,5 +98,6 @@ class ProgressDialog : public QDialog {
     QList<QMetaObject::Connection> m_taskConnections;
 
     bool m_is_multi_step = false;
+    bool m_detailsExpanded = false;
     QHash<QUuid, SubTaskProgressBar*> taskProgress;
 };

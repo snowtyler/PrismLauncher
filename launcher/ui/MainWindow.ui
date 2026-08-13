@@ -302,7 +302,7 @@
      <iconset theme="checkupdate"/>
     </property>
     <property name="text">
-     <string>&amp;Update...</string>
+     <string>Launcher &amp;Update...</string>
     </property>
     <property name="toolTip">
      <string>Check for new updates for %1.</string>

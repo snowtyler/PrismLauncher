@@ -59,7 +59,8 @@ private:
     enum class PackStatus {
         Install,
         Update,
-        Play
+        Play,
+        Running
     } m_status = PackStatus::Install;
 
     BaseInstance* getLocalInstance() const;

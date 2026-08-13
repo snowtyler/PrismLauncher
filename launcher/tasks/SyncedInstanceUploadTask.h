@@ -7,6 +7,9 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QStringList>
+#include <QFutureWatcher>
+#include <QAtomicInteger>
+#include <QMap>
 
 class SyncedInstanceUploadTask : public Task {
     Q_OBJECT
@@ -24,6 +27,7 @@ protected:
 
 private slots:
     void remoteManifestFetched();
+    void diffComputed();
     void actionFinished();
     void manifestUploaded();
     void bannerUploaded();
@@ -48,8 +52,17 @@ private:
     struct SyncAction {
         QString type; // "PUT" or "DELETE"
         QString relPath;
-        QByteArray data; // For PUT
     };
+
+    struct DiffResult {
+        bool success = false;
+        QString error;
+        QJsonArray finalFiles;
+        QList<SyncAction> actions;
+    };
+
+    QFutureWatcher<DiffResult> m_diffWatcher;
+    QAtomicInteger<bool> m_aborted = false;
 
     QList<SyncAction> m_actions;
     int m_actionIndex = 0;
@@ -58,6 +71,7 @@ private:
     QByteArray m_manifestData;       // Generated manifest content
 
     void fetchRemoteManifest();
+    DiffResult computeDiff(const QMap<QString, QString>& remoteHashes);
     void performSync();
     void uploadManifest();
     void uploadBanner();

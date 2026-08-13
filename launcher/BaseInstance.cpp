@@ -282,6 +282,7 @@ void BaseInstance::setRunning(bool running)
     m_isRunning = running;
 
     emit runningStatusChanged(running);
+    emit propertiesChanged(this);
 }
 
 void BaseInstance::setMinecraftRunning(bool running)

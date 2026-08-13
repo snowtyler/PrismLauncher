@@ -36,7 +36,7 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
 
     QString currentDesc = inst->settings()->get("ExportSummary").toString();
     descriptionEdit = new QLineEdit(currentDesc, this);
-    descriptionEdit->setPlaceholderText(tr("Brief description of the modpack"));
+    descriptionEdit->setPlaceholderText(tr("Leave empty to keep existing description on server"));
     formLayout->addRow(tr("Modpack Description:"), descriptionEdit);
 
     QString currentVer = inst->settings()->get("SyncVersion").toString();
