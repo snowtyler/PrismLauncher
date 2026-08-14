@@ -1,126 +1,120 @@
-name: Build Application and Make Release
+name: Build Windows Release
 
 on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag or Version name for the release (e.g. 12.0.1)'
+        required: false
+        default: ''
 
-permissions: {}
+permissions:
+  contents: write
 
 jobs:
-  build_release:
-    name: Build Release
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-      # Required for Azure Trusted Signing
-      id-token: write
-      # Required for vcpkg binary cache
-      packages: write
-    with:
-      build-type: Release
-      environment: Release
-    secrets: inherit
+  build_windows_release:
+    name: Build Windows Installer
+    runs-on: windows-2022
 
-  create_release:
-    needs: build_release
-    permissions:
-      contents: write
-    runs-on: ubuntu-slim
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: "true"
-          path: "PrismLauncher-source"
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
-      - name: Grab and store version
+
+      - name: Determine Version
+        id: version_step
+        shell: bash
         run: |
-          tag_name=$(echo ${{ github.ref }} | grep -oE "[^/]+$")
-          echo "VERSION=$tag_name" >> $GITHUB_ENV
-      - name: Package artifacts properly
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            VERSION="${{ github.event.inputs.tag_name }}"
+          else
+            VERSION=$(echo ${{ github.ref }} | grep -oE "[^/]+$")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Building Prism Sync release version: $VERSION"
+
+      - name: Enter Visual Studio Developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+          vsversion: 2022
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup vcpkg environment
+        shell: bash
         run: |
-          mv ${{ github.workspace }}/PrismLauncher-source PrismLauncher-${{ env.VERSION }}
-          mv PrismLauncher-Linux-Qt6-Portable*/PrismLauncher-portable.tar.gz PrismLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
-          mv PrismLauncher-Linux-aarch64-Qt6-Portable*/PrismLauncher-portable.tar.gz PrismLauncher-Linux-aarch64-Qt6-Portable-${{ env.VERSION }}.tar.gz
-          mv PrismLauncher-*.AppImage/PrismLauncher-*-x86_64.AppImage PrismLauncher-Linux-x86_64.AppImage
-          mv PrismLauncher-*.AppImage.zsync/PrismLauncher-*-x86_64.AppImage.zsync PrismLauncher-Linux-x86_64.AppImage.zsync
-          mv PrismLauncher-*.AppImage/PrismLauncher-*-aarch64.AppImage PrismLauncher-Linux-aarch64.AppImage
-          mv PrismLauncher-*.AppImage.zsync/PrismLauncher-*-aarch64.AppImage.zsync PrismLauncher-Linux-aarch64.AppImage.zsync
-          mv PrismLauncher-macOS*/PrismLauncher.zip PrismLauncher-macOS-${{ env.VERSION }}.zip
-          mv PrismLauncher-macOS*/PrismLauncher.dmg PrismLauncher-macOS-${{ env.VERSION }}.dmg
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
-          tar --exclude='.git' -czf PrismLauncher-${{ env.VERSION }}.tar.gz PrismLauncher-${{ env.VERSION }}
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          aqtversion: "==3.1.*"
+          version: "6.10.2"
+          modules: "qtimageformats qtnetworkauth"
 
-          for d in PrismLauncher-Windows-MSVC*; do
-            cd "${d}" || continue
-            LEGACY="$(echo -n ${d} | grep -o Legacy || true)"
-            ARM64="$(echo -n ${d} | grep -o arm64 || true)"
-            INST="$(echo -n ${d} | grep -o Setup || true)"
-            PORT="$(echo -n ${d} | grep -o Portable || true)"
-            NAME="PrismLauncher-Windows-MSVC"
-            test -z "${LEGACY}" || NAME="${NAME}-Legacy"
-            test -z "${ARM64}" || NAME="${NAME}-arm64"
-            test -z "${PORT}" || NAME="${NAME}-Portable"
-            test -z "${INST}" || mv PrismLauncher-*.exe ../${NAME}-Setup-${{ env.VERSION }}.exe
-            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
-            cd ..
-          done
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake --preset windows_msvc `
+            -DLauncher_UPDATER_GITHUB_REPO="https://github.com/snowtyler/PrismLauncher" `
+            -DLauncher_BUILD_ARTIFACT="Windows-MSVC-Qt6"
 
-          for d in PrismLauncher-Windows-MinGW-w64*; do
-            cd "${d}" || continue
-            INST="$(echo -n ${d} | grep -o Setup || true)"
-            PORT="$(echo -n ${d} | grep -o Portable || true)"
-            NAME="PrismLauncher-Windows-MinGW-w64"
-            test -z "${PORT}" || NAME="${NAME}-Portable"
-            test -z "${INST}" || mv PrismLauncher-*.exe ../${NAME}-Setup-${{ env.VERSION }}.exe
-            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
-            cd ..
-          done
+      - name: Compile Release Build
+        shell: pwsh
+        run: |
+          cmake --build --preset windows_msvc --config Release
 
-          for d in PrismLauncher-Windows-MinGW-arm64*; do
-            cd "${d}" || continue
-            INST="$(echo -n ${d} | grep -o Setup || true)"
-            PORT="$(echo -n ${d} | grep -o Portable || true)"
-            NAME="PrismLauncher-Windows-MinGW-arm64"
-            test -z "${PORT}" || NAME="${NAME}-Portable"
-            test -z "${INST}" || mv PrismLauncher-*.exe ../${NAME}-Setup-${{ env.VERSION }}.exe
-            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
-            cd ..
-          done
+      - name: Stage Install Files
+        shell: pwsh
+        run: |
+          cmake --install build --config Release
 
-      - name: Create release
-        id: create_release
-        uses: softprops/action-gh-release@v3
+          cd ${{ github.workspace }}
+          Get-ChildItem install -Recurse | ForEach FullName | Resolve-Path -Relative | %{ $_.TrimStart('.\') } | %{ $_.TrimStart('install') } | %{ $_.TrimStart('\') } | Out-File -FilePath install/manifest.txt
+
+      - name: Build NSIS Installer
+        shell: pwsh
+        env:
+          NSCURL_VERSION: "v24.9.26.122"
+          NSCURL_SHA256: "AEE6C4BE3CB6455858E9C1EE4B3AFE0DB9960FA03FE99CCDEDC28390D57CCBB0"
+        run: |
+          New-Item -Name NSISPlugins -ItemType Directory -Force
+          Invoke-WebRequest https://github.com/negrutiu/nsis-nscurl/releases/download/"$env:NSCURL_VERSION"/NScurl.zip -OutFile NSISPlugins\NScurl.zip
+          $nscurl_hash = (Get-FileHash NSISPlugins\NScurl.zip -Algorithm Sha256).Hash
+          if ($nscurl_hash -ne "$env:NSCURL_SHA256") {
+            Write-Error "NScurl.zip sha256 mismatch"
+            exit 1
+          }
+          Expand-Archive -Path NSISPlugins\NScurl.zip -DestinationPath NSISPlugins\NScurl -Force
+
+          cd install
+          makensis -NOCD "${{ github.workspace }}/build/program_info/win_install.nsi"
+          cd ${{ github.workspace }}
+
+          # Copy to include platform string for updater compatibility
+          $installer = Get-ChildItem -Path . -Filter "PrismSync-Setup-*.exe" | Select-Object -First 1
+          if ($installer) {
+            Copy-Item $installer.FullName "PrismSync-Windows-MSVC-Setup-$env:VERSION.exe"
+          }
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.ref }}
-          name: Prism Launcher ${{ env.VERSION }}
-          draft: true
+          tag_name: ${{ env.VERSION }}
+          name: Prism Sync ${{ env.VERSION }}
+          draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          generate_release_notes: true
           files: |
-            PrismLauncher-Linux-x86_64.AppImage
-            PrismLauncher-Linux-x86_64.AppImage.zsync
-            PrismLauncher-Linux-aarch64.AppImage
-            PrismLauncher-Linux-aarch64.AppImage.zsync
-            PrismLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
-            PrismLauncher-Linux-aarch64-Qt6-Portable-${{ env.VERSION }}.tar.gz
-            PrismLauncher-Windows-MinGW-w64-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MinGW-w64-Portable-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MinGW-w64-Setup-${{ env.VERSION }}.exe
-            PrismLauncher-Windows-MinGW-arm64-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MinGW-arm64-Portable-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MinGW-arm64-Setup-${{ env.VERSION }}.exe
-            PrismLauncher-Windows-MSVC-arm64-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MSVC-arm64-Portable-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MSVC-arm64-Setup-${{ env.VERSION }}.exe
-            PrismLauncher-Windows-MSVC-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MSVC-Portable-${{ env.VERSION }}.zip
-            PrismLauncher-Windows-MSVC-Setup-${{ env.VERSION }}.exe
-            PrismLauncher-macOS-${{ env.VERSION }}.zip
-            PrismLauncher-macOS-${{ env.VERSION }}.dmg
-            PrismLauncher-${{ env.VERSION }}.tar.gz
+            PrismSync-Setup-*.exe
+            PrismSync-Windows-MSVC-Setup-*.exe
