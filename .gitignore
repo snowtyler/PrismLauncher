@@ -65,3 +65,4 @@ flatbuild
 PrismLauncher-Setup.exe
 /NSISPlugins
 *.exe
+/logs

@@ -31,4 +31,14 @@ class HintOverrideProxyStyle : public QProxyStyle {
                   const QStyleOption* option = nullptr,
                   const QWidget* widget = nullptr,
                   QStyleHintReturn* returnData = nullptr) const override;
+
+    void drawControl(ControlElement element,
+                     const QStyleOption* option,
+                     QPainter* painter,
+                     const QWidget* widget = nullptr) const override;
+
+    QSize sizeFromContents(ContentsType type,
+                           const QStyleOption* option,
+                           const QSize& contentsSize,
+                           const QWidget* widget = nullptr) const override;
 };

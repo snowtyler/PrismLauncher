@@ -40,6 +40,28 @@ static QPixmap getRoundedPixmap(const QPixmap& src, int radius, int width, int h
     return rounded;
 }
 
+static QIcon createMoreOptionsIcon(int size = 24, const QColor& color = QColor("#E2E8F0"))
+{
+    QPixmap pixmap(size * 2, size * 2);
+    pixmap.fill(Qt::transparent);
+    pixmap.setDevicePixelRatio(2.0);
+    {
+        QPainter p(&pixmap);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+
+        qreal cx = size / 2.0;
+        qreal r = 2.0;
+        qreal spacing = 6.0;
+
+        p.drawEllipse(QPointF(cx, cx - spacing), r, r);
+        p.drawEllipse(QPointF(cx, cx), r, r);
+        p.drawEllipse(QPointF(cx, cx + spacing), r, r);
+    }
+    return QIcon(pixmap);
+}
+
 ModpackCard::ModpackCard(const QJsonObject& packData, bool adminMode, QWidget* parent)
     : QFrame(parent), m_packData(packData), m_adminMode(adminMode)
 {
@@ -142,15 +164,14 @@ ModpackCard::ModpackCard(const QJsonObject& packData, bool adminMode, QWidget* p
     actionLayout->addWidget(m_actionButton, 1);
     connect(m_actionButton, &QPushButton::clicked, this, &ModpackCard::onActionButtonClicked);
 
-    m_settingsButton = new QPushButton("⋮", this);
+    m_settingsButton = new QPushButton(this);
+    m_settingsButton->setIcon(createMoreOptionsIcon(24));
+    m_settingsButton->setIconSize(QSize(20, 20));
     m_settingsButton->setFixedSize(36, 36);
     m_settingsButton->setCursor(Qt::PointingHandCursor);
     m_settingsButton->setStyleSheet(R"(
         QPushButton {
             background-color: #333846;
-            color: #E2E8F0;
-            font-size: 16px;
-            font-weight: bold;
             border: 1px solid #3F4456;
             border-radius: 8px;
         }
