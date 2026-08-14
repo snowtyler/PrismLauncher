@@ -66,7 +66,7 @@ jobs:
         run: |
           cmake --preset windows_msvc `
             -DLauncher_UPDATER_GITHUB_REPO="https://github.com/snowtyler/PrismLauncher" `
-            -DLauncher_BUILD_ARTIFACT="Windows-MSVC-Qt6"
+            -DLauncher_BUILD_ARTIFACT="Setup"
 
       - name: Compile Release Build
         shell: pwsh
@@ -100,12 +100,6 @@ jobs:
           makensis -NOCD "${{ github.workspace }}/build/program_info/win_install.nsi"
           cd ${{ github.workspace }}
 
-          # Copy to include platform string for updater compatibility
-          $installer = Get-ChildItem -Path . -Filter "PrismSync-Setup-*.exe" | Select-Object -First 1
-          if ($installer) {
-            Copy-Item $installer.FullName "PrismSync-Windows-MSVC-Setup-$env:VERSION.exe"
-          }
-
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -117,4 +111,3 @@ jobs:
           generate_release_notes: true
           files: |
             PrismSync-Setup-*.exe
-            PrismSync-Windows-MSVC-Setup-*.exe
