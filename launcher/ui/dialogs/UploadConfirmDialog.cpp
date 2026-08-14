@@ -79,6 +79,74 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
 
     mainLayout->addLayout(formLayout);
 
+    // Client Settings (Distributed to Players)
+    auto* clientSettingsGroup = new QGroupBox(tr("Client Settings (Distributed to Players)"), this);
+    auto* clientSettingsLayout = new QVBoxLayout(clientSettingsGroup);
+
+    // Memory Settings
+    auto* memoryLayout = new QHBoxLayout();
+    overrideMemoryCheck = new QCheckBox(tr("Custom Memory Allocation:"), this);
+    overrideMemoryCheck->setToolTip(tr("When enabled, clients installing or updating this pack will automatically use these memory limits."));
+    bool currentOverrideMem = inst->settings()->get("OverrideMemory").toBool();
+    int currentMinMem = inst->settings()->get("MinMemAlloc").toInt();
+    int currentMaxMem = inst->settings()->get("MaxMemAlloc").toInt();
+    if (currentMinMem <= 0) currentMinMem = 1024;
+    if (currentMaxMem <= 0) currentMaxMem = 4096;
+
+    minMemSpin = new QSpinBox(this);
+    minMemSpin->setRange(256, 65536);
+    minMemSpin->setSingleStep(512);
+    minMemSpin->setSuffix(" MB");
+    minMemSpin->setValue(currentMinMem);
+    minMemSpin->setEnabled(currentOverrideMem);
+
+    maxMemSpin = new QSpinBox(this);
+    maxMemSpin->setRange(512, 65536);
+    maxMemSpin->setSingleStep(512);
+    maxMemSpin->setSuffix(" MB");
+    maxMemSpin->setValue(currentMaxMem);
+    maxMemSpin->setEnabled(currentOverrideMem);
+
+    overrideMemoryCheck->setChecked(currentOverrideMem);
+    connect(overrideMemoryCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        minMemSpin->setEnabled(checked);
+        maxMemSpin->setEnabled(checked);
+    });
+
+    memoryLayout->addWidget(overrideMemoryCheck);
+    memoryLayout->addWidget(new QLabel(tr("Min:"), this));
+    memoryLayout->addWidget(minMemSpin);
+    memoryLayout->addWidget(new QLabel(tr("Max:"), this));
+    memoryLayout->addWidget(maxMemSpin);
+    memoryLayout->addStretch();
+    clientSettingsLayout->addLayout(memoryLayout);
+
+    // JVM Arguments
+    auto* jvmArgsLayout = new QVBoxLayout();
+    overrideJavaArgsCheck = new QCheckBox(tr("Custom JVM Arguments:"), this);
+    overrideJavaArgsCheck->setToolTip(tr("When enabled, clients installing or updating this pack will automatically use these JVM arguments."));
+    bool currentOverrideArgs = inst->settings()->get("OverrideJavaArgs").toBool();
+    QString currentJvmArgs = inst->settings()->get("JvmArgs").toString();
+
+    jvmArgsEdit = new QLineEdit(this);
+    jvmArgsEdit->setPlaceholderText(tr("e.g. -XX:+UseG1GC -XX:+ParallelRefProcEnabled"));
+    jvmArgsEdit->setText(currentJvmArgs);
+    jvmArgsEdit->setEnabled(currentOverrideArgs);
+
+    overrideJavaArgsCheck->setChecked(currentOverrideArgs);
+    connect(overrideJavaArgsCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        jvmArgsEdit->setEnabled(checked);
+    });
+
+    auto* jvmCheckLayout = new QHBoxLayout();
+    jvmCheckLayout->addWidget(overrideJavaArgsCheck);
+    jvmCheckLayout->addStretch();
+    jvmArgsLayout->addLayout(jvmCheckLayout);
+    jvmArgsLayout->addWidget(jvmArgsEdit);
+
+    clientSettingsLayout->addLayout(jvmArgsLayout);
+    mainLayout->addWidget(clientSettingsGroup);
+
     // File selection checklist tree view
     mainLayout->addWidget(new QLabel(tr("Select files and folders to include in sync:"), this));
     treeView = new QTreeView(this);

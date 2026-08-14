@@ -697,6 +697,20 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
                     m_selectedInstance->settings()->set("ExportVersion", ver);
                     m_selectedInstance->settings()->set("SyncIsPrivate", isPrivate);
                     m_selectedInstance->settings()->set("ExportSummary", desc);
+
+                    bool overrideMem = dlg.overrideMemoryCheck ? dlg.overrideMemoryCheck->isChecked() : false;
+                    m_selectedInstance->settings()->set("OverrideMemory", overrideMem);
+                    if (overrideMem && dlg.minMemSpin && dlg.maxMemSpin) {
+                        m_selectedInstance->settings()->set("MinMemAlloc", dlg.minMemSpin->value());
+                        m_selectedInstance->settings()->set("MaxMemAlloc", dlg.maxMemSpin->value());
+                    }
+
+                    bool overrideArgs = dlg.overrideJavaArgsCheck ? dlg.overrideJavaArgsCheck->isChecked() : false;
+                    m_selectedInstance->settings()->set("OverrideJavaArgs", overrideArgs);
+                    if (overrideArgs && dlg.jvmArgsEdit) {
+                        m_selectedInstance->settings()->set("JvmArgs", dlg.jvmArgsEdit->text().trimmed());
+                    }
+
                     m_selectedInstance->saveNow();
 
                     // Collect files to upload based on tree selection

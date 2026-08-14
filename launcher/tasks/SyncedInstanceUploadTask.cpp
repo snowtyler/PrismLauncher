@@ -339,6 +339,19 @@ void SyncedInstanceUploadTask::uploadManifest()
     docObj["loader"] = loaderType;
     docObj["loader_version"] = loaderVersion;
 
+    bool overrideMem = m_instance->settings()->get("OverrideMemory").toBool();
+    docObj["override_memory"] = overrideMem;
+    if (overrideMem) {
+        docObj["min_memory"] = m_instance->settings()->get("MinMemAlloc").toInt();
+        docObj["max_memory"] = m_instance->settings()->get("MaxMemAlloc").toInt();
+    }
+
+    bool overrideArgs = m_instance->settings()->get("OverrideJavaArgs").toBool();
+    docObj["override_java_args"] = overrideArgs;
+    if (overrideArgs) {
+        docObj["jvm_args"] = m_instance->settings()->get("JvmArgs").toString().trimmed();
+    }
+
     QJsonDocument doc(docObj);
     m_manifestData = doc.toJson(QJsonDocument::Compact);
 

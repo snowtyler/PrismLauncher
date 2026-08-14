@@ -586,6 +586,26 @@ void ModpackDashboard::runInstall(const QString& shortcode, const QJsonObject& m
     if (inst) {
         inst->settings()->set("IsSyncedInstance", true);
         inst->settings()->set("SyncShortcode", shortcode);
+
+        bool overrideMem = manifest["override_memory"].toBool(false);
+        if (overrideMem) {
+            inst->settings()->set("OverrideMemory", true);
+            if (manifest.contains("min_memory")) {
+                inst->settings()->set("MinMemAlloc", manifest["min_memory"].toInt(1024));
+            }
+            if (manifest.contains("max_memory")) {
+                inst->settings()->set("MaxMemAlloc", manifest["max_memory"].toInt(4096));
+            }
+        }
+
+        bool overrideArgs = manifest["override_java_args"].toBool(false);
+        if (overrideArgs) {
+            inst->settings()->set("OverrideJavaArgs", true);
+            if (manifest.contains("jvm_args")) {
+                inst->settings()->set("JvmArgs", manifest["jvm_args"].toString().trimmed());
+            }
+        }
+
         inst->saveNow();
 
         // Perform initial sync

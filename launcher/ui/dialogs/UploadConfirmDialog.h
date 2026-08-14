@@ -2,6 +2,7 @@
 #include <QDialog>
 #include <QLineEdit>
 #include <QCheckBox>
+#include <QSpinBox>
 #include <QTreeView>
 #include <QFileSystemModel>
 #include <QFormLayout>
@@ -23,6 +24,11 @@ public:
     QLineEdit* versionEdit;
     QCheckBox* privateCheck;
     QCheckBox* forceConfigOverwriteCheck;
+    QCheckBox* overrideMemoryCheck;
+    QSpinBox* minMemSpin;
+    QSpinBox* maxMemSpin;
+    QCheckBox* overrideJavaArgsCheck;
+    QLineEdit* jvmArgsEdit;
     QLineEdit* bannerImageEdit;
     QPushButton* bannerBrowseBtn;
     QString bannerImagePath;

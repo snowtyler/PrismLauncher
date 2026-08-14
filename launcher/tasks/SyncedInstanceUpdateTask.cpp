@@ -172,6 +172,26 @@ void SyncedInstanceUpdateTask::manifestFetched()
     QJsonArray files = obj["files"].toArray();
     bool forceConfigOverwrite = obj["force_config_overwrite"].toBool(false);
 
+    bool overrideMem = obj["override_memory"].toBool(false);
+    if (overrideMem) {
+        m_instance->settings()->set("OverrideMemory", true);
+        if (obj.contains("min_memory")) {
+            m_instance->settings()->set("MinMemAlloc", obj["min_memory"].toInt(1024));
+        }
+        if (obj.contains("max_memory")) {
+            m_instance->settings()->set("MaxMemAlloc", obj["max_memory"].toInt(4096));
+        }
+    }
+
+    bool overrideArgs = obj["override_java_args"].toBool(false);
+    if (overrideArgs) {
+        m_instance->settings()->set("OverrideJavaArgs", true);
+        if (obj.contains("jvm_args")) {
+            m_instance->settings()->set("JvmArgs", obj["jvm_args"].toString().trimmed());
+        }
+    }
+    m_instance->saveNow();
+
     QString currentVersion = m_instance->settings()->get("SyncVersion").toString();
     qDebug() << "Local version:" << currentVersion << "Target version:" << m_targetVersion << "Force config overwrite:" << forceConfigOverwrite;
 
