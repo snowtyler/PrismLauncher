@@ -551,7 +551,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 #ifndef Q_OS_MAC
 void MainWindow::keyReleaseEvent(QKeyEvent* event)
 {
-    if (event->key() == Qt::Key_Alt && !APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool())
+    bool isCtrlAlt = (event->key() == Qt::Key_Alt && (event->modifiers() & Qt::ControlModifier)) ||
+                     (event->key() == Qt::Key_Control && (event->modifiers() & Qt::AltModifier));
+    if (isCtrlAlt && !APPLICATION->settings()->get("MenuBarInsteadOfToolBar").toBool())
         ui->menuBar->setVisible(!ui->menuBar->isVisible());
     else
         QMainWindow::keyReleaseEvent(event);
