@@ -6,6 +6,7 @@
 
 AllowSkipFiles off
 Unicode true
+SetCompressor /SOLID lzma
 
 Name "@Launcher_DisplayName@"
 InstallDir "$LOCALAPPDATA\Programs\@Launcher_CommonName@"

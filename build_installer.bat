@@ -59,7 +59,10 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: Install binaries locally
-echo [INFO] Installing built binaries to staging directory...
+echo [INFO] Cleaning and installing built binaries to staging directory...
+if exist "install" (
+    rmdir /s /q "install"
+)
 cmake --install build --config %BUILD_CONFIG%
 
 if %ERRORLEVEL% neq 0 (
