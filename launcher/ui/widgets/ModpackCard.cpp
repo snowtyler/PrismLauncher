@@ -217,6 +217,12 @@ void ModpackCard::updateStatus()
 {
     BaseInstance* inst = getLocalInstance();
     if (!inst) {
+        QString displayVer = m_version;
+        if (!displayVer.isEmpty() && !displayVer.startsWith('v')) {
+            displayVer = "v" + displayVer;
+        }
+        m_versionLabel->setText(displayVer);
+
         m_status = PackStatus::Install;
         m_actionButton->setText(tr("INSTALL"));
         m_actionButton->setEnabled(true);
@@ -235,6 +241,17 @@ void ModpackCard::updateStatus()
         m_updateSubLabel->hide();
     } else {
         connect(inst, &BaseInstance::runningStatusChanged, this, &ModpackCard::updateStatus, Qt::UniqueConnection);
+        connect(inst, &BaseInstance::propertiesChanged, this, &ModpackCard::updateStatus, Qt::UniqueConnection);
+
+        QString installedVer = inst->settings()->get("SyncVersion").toString();
+        if (installedVer.isEmpty()) {
+            installedVer = m_version;
+        }
+        if (!installedVer.isEmpty() && !installedVer.startsWith('v')) {
+            installedVer = "v" + installedVer;
+        }
+        m_versionLabel->setText(installedVer);
+
         if (inst->isRunning()) {
             m_status = PackStatus::Running;
             m_actionButton->setText(tr("Running"));
@@ -255,8 +272,9 @@ void ModpackCard::updateStatus()
             m_status = PackStatus::Update;
             m_actionButton->setEnabled(true);
             QString targetVer = inst->modpackUpdateVersion();
-            if (targetVer.isEmpty()) targetVer = "v1.2.1";
-            else if (!targetVer.startsWith('v')) targetVer = "v" + targetVer;
+            if (targetVer.isEmpty()) targetVer = m_version;
+            if (targetVer.isEmpty()) targetVer = "1.0.0";
+            if (!targetVer.startsWith('v')) targetVer = "v" + targetVer;
 
             m_actionButton->setText(tr("UPDATE (%1)").arg(targetVer));
             m_actionButton->setStyleSheet(R"(

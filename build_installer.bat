@@ -42,7 +42,7 @@ set "PATH=%CMAKE_DIR%;%NINJA_DIR%;C:\Program Files (x86)\NSIS;C:\Program Files\N
 
 :: Reconfigure project with Updater enabled and Qt6 prefix path
 echo [INFO] Configuring CMake project...
-cmake --preset windows_msvc -DLauncher_BUILD_ARTIFACT="PrismLauncher" -DCMAKE_PREFIX_PATH="C:/Users/Tyler/6.10.3/msvc2022_64"
+cmake --preset windows_msvc -DLauncher_BUILD_ARTIFACT="PrismSync" -DLauncher_UPDATER_GITHUB_REPO="https://github.com/snowtyler/PrismLauncher" -DCMAKE_PREFIX_PATH="C:/Users/Tyler/6.10.3/msvc2022_64"
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] CMake configuration failed.
