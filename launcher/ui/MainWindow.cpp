@@ -727,7 +727,8 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
                     }
 
                     bool forceConfigOverwrite = dlg.forceConfigOverwriteCheck ? dlg.forceConfigOverwriteCheck->isChecked() : false;
-                    auto uploadTask = makeShared<SyncedInstanceUploadTask>(m_selectedInstance, accessKey, secretKey, selectedRelPaths, dlg.bannerImagePath, forceConfigOverwrite);
+                    bool forceVoxyRedownload = dlg.forceVoxyCacheRedownloadCheck ? dlg.forceVoxyCacheRedownloadCheck->isChecked() : false;
+                    auto uploadTask = makeShared<SyncedInstanceUploadTask>(m_selectedInstance, accessKey, secretKey, selectedRelPaths, dlg.bannerImagePath, forceConfigOverwrite, forceVoxyRedownload);
                     connect(uploadTask.get(), &Task::failed, this, [this](QString reason) {
                         QMessageBox::critical(this, tr("Upload Error"), reason);
                     });

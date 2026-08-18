@@ -77,6 +77,11 @@ UploadConfirmDialog::UploadConfirmDialog(BaseInstance* inst, QWidget* parent)
     forceConfigOverwriteCheck->setChecked(false);
     formLayout->addRow(forceConfigOverwriteCheck);
 
+    forceVoxyCacheRedownloadCheck = new QCheckBox(tr("Force client Voxy cache redownload (resets local cache)"), this);
+    forceVoxyCacheRedownloadCheck->setToolTip(tr("When checked, clients will delete their local Voxy cache and redownload it from the remote server during this update."));
+    forceVoxyCacheRedownloadCheck->setChecked(false);
+    formLayout->addRow(forceVoxyCacheRedownloadCheck);
+
     mainLayout->addLayout(formLayout);
 
     // Client Settings (Distributed to Players)

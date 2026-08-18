@@ -16,8 +16,8 @@
 #include <QtConcurrent>
 #include <QThreadPool>
 
-SyncedInstanceUploadTask::SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath, bool forceConfigOverwrite)
-    : Task(true), m_instance(instance), m_accessKey(accessKey), m_secretKey(secretKey), m_bannerImagePath(bannerImagePath), m_forceConfigOverwrite(forceConfigOverwrite), m_selectedFiles(selectedFiles)
+SyncedInstanceUploadTask::SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath, bool forceConfigOverwrite, bool forceVoxyRedownload)
+    : Task(true), m_instance(instance), m_accessKey(accessKey), m_secretKey(secretKey), m_bannerImagePath(bannerImagePath), m_forceConfigOverwrite(forceConfigOverwrite), m_forceVoxyRedownload(forceVoxyRedownload), m_selectedFiles(selectedFiles)
 {
     m_shortcode = m_instance->settings()->get("SyncShortcode").toString();
     m_bucket = APPLICATION->settings()->get("SyncR2Bucket").toString();
@@ -289,6 +289,7 @@ void SyncedInstanceUploadTask::uploadManifest()
         docObj["version"] = "1.0.0";
     }
     docObj["force_config_overwrite"] = m_forceConfigOverwrite;
+    docObj["force_voxy_redownload"] = m_forceVoxyRedownload;
     docObj["files"] = m_finalFiles;
 
     // If it's a MinecraftInstance we can try to extract loader configurations

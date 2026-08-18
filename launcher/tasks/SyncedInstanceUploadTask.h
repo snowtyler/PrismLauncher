@@ -14,13 +14,16 @@
 class SyncedInstanceUploadTask : public Task {
     Q_OBJECT
 public:
-    SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath = QString(), bool forceConfigOverwrite = false);
+    SyncedInstanceUploadTask(BaseInstance* instance, const QString& accessKey, const QString& secretKey, const QStringList& selectedFiles, const QString& bannerImagePath = QString(), bool forceConfigOverwrite = false, bool forceVoxyRedownload = false);
     virtual ~SyncedInstanceUploadTask() = default;
 
     bool abort() override;
 
     void setForceConfigOverwrite(bool force) { m_forceConfigOverwrite = force; }
     bool forceConfigOverwrite() const { return m_forceConfigOverwrite; }
+
+    void setForceVoxyRedownload(bool force) { m_forceVoxyRedownload = force; }
+    bool forceVoxyRedownload() const { return m_forceVoxyRedownload; }
 
 protected:
     void executeTask() override;
@@ -39,6 +42,7 @@ private:
     QString m_secretKey;
     QString m_bannerImagePath;
     bool m_forceConfigOverwrite = false;
+    bool m_forceVoxyRedownload = false;
 
     QNetworkReply* m_manifestReply = nullptr;
     QNetworkReply* m_currentActionReply = nullptr;

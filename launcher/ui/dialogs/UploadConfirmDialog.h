@@ -24,6 +24,7 @@ public:
     QLineEdit* versionEdit;
     QCheckBox* privateCheck;
     QCheckBox* forceConfigOverwriteCheck;
+    QCheckBox* forceVoxyCacheRedownloadCheck;
     QCheckBox* overrideMemoryCheck;
     QSpinBox* minMemSpin;
     QSpinBox* maxMemSpin;
