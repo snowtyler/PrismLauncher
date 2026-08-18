@@ -383,18 +383,21 @@ void SyncedInstanceUpdateTask::deleteOrphanedFiles(const QStringList& filesToKee
             relPath.startsWith("minecraft/backups/", Qt::CaseInsensitive) ||
             relPath.startsWith("minecraft/local/", Qt::CaseInsensitive) ||
             relPath.startsWith(".tmp/", Qt::CaseInsensitive) ||
+            relPath.endsWith("options.txt", Qt::CaseInsensitive) ||
+            relPath.endsWith("optionsshaders.txt", Qt::CaseInsensitive) ||
+            relPath.endsWith("optionsof.txt", Qt::CaseInsensitive) ||
+            relPath.endsWith("servers.dat", Qt::CaseInsensitive) ||
+            relPath.endsWith("servers.dat_old", Qt::CaseInsensitive) ||
             relPath.endsWith("instance.cfg", Qt::CaseInsensitive) ||
             relPath.endsWith(".synced_cache.json", Qt::CaseInsensitive)) {
             continue;
         }
 
-        // Only cleanup within mods, config, resourcepacks, shaderpacks, options.txt, servers.dat
+        // Only cleanup within mods, config, resourcepacks, shaderpacks
         if (!relPath.startsWith("minecraft/mods/", Qt::CaseInsensitive) &&
             !relPath.startsWith("minecraft/config/", Qt::CaseInsensitive) &&
             !relPath.startsWith("minecraft/resourcepacks/", Qt::CaseInsensitive) &&
-            !relPath.startsWith("minecraft/shaderpacks/", Qt::CaseInsensitive) &&
-            relPath.compare("minecraft/options.txt", Qt::CaseInsensitive) != 0 &&
-            relPath.compare("minecraft/servers.dat", Qt::CaseInsensitive) != 0) {
+            !relPath.startsWith("minecraft/shaderpacks/", Qt::CaseInsensitive)) {
             continue;
         }
 
