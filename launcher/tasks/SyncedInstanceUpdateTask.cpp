@@ -194,11 +194,16 @@ void SyncedInstanceUpdateTask::manifestFetched()
     m_instance->saveNow();
 
     QString currentVersion = m_instance->settings()->get("SyncVersion").toString();
-    qDebug() << "Local version:" << currentVersion << "Target version:" << m_targetVersion
-             << "Force config overwrite:" << forceConfigOverwrite << "Force Voxy redownload:" << forceVoxyRedownload;
+    bool isNewVersion = currentVersion.isEmpty() || currentVersion != m_targetVersion;
+    bool shouldForceVoxyRedownload = forceVoxyRedownload && (isNewVersion || m_forceRepair);
+    bool shouldForceConfigOverwrite = forceConfigOverwrite && (isNewVersion || m_forceRepair);
 
-    if (forceVoxyRedownload) {
-        qDebug() << "Force Voxy cache redownload requested. Deleting local Voxy cache directories...";
+    qDebug() << "Local version:" << currentVersion << "Target version:" << m_targetVersion
+             << "Force config overwrite:" << forceConfigOverwrite << "(active:" << shouldForceConfigOverwrite << ")"
+             << "Force Voxy redownload:" << forceVoxyRedownload << "(active:" << shouldForceVoxyRedownload << ")";
+
+    if (shouldForceVoxyRedownload) {
+        qDebug() << "Force Voxy cache redownload requested for new version/repair. Deleting local Voxy cache directories...";
         QSet<QString> voxyDirsToDelete;
         voxyDirsToDelete.insert(FS::PathCombine(m_instance->instanceRoot(), "minecraft/.voxy/saves/cozycreations.modpack.gg"));
         voxyDirsToDelete.insert(FS::PathCombine(m_instance->instanceRoot(), ".voxy/saves/cozycreations.modpack.gg"));
@@ -240,8 +245,8 @@ void SyncedInstanceUpdateTask::manifestFetched()
     bool voxySeeded = isVoxyCacheSeeded();
     qDebug() << "Voxy cache seeded status:" << voxySeeded;
 
-    // Fast-Path: If local version matches target version and non-empty, check file existence & size (unless force repair or force voxy redownload is requested)
-    if (!m_forceRepair && !forceVoxyRedownload && !currentVersion.isEmpty() && currentVersion == m_targetVersion) {
+    // Fast-Path: If local version matches target version and non-empty, check file existence & size (unless force repair or active force voxy redownload is requested)
+    if (!m_forceRepair && !shouldForceVoxyRedownload && !currentVersion.isEmpty() && currentVersion == m_targetVersion) {
         bool allPresentAndMatchingSize = true;
         for (int i = 0; i < files.size(); ++i) {
             QJsonObject fileObj = files[i].toObject();
@@ -264,7 +269,7 @@ void SyncedInstanceUpdateTask::manifestFetched()
 
             bool isOptionsFile = cleanPath.endsWith("options.txt", Qt::CaseInsensitive);
 
-            if (!isCacheFolder && !(isOptionsFile && !forceConfigOverwrite) && fileObj.contains("size")) {
+            if (!isCacheFolder && !(isOptionsFile && !shouldForceConfigOverwrite) && fileObj.contains("size")) {
                 qint64 expectedSize = fileObj["size"].toVariant().toLongLong();
                 if (info.size() != expectedSize) {
                     allPresentAndMatchingSize = false;
@@ -281,7 +286,7 @@ void SyncedInstanceUpdateTask::manifestFetched()
     }
 
     loadHashCache();
-    if (forceVoxyRedownload) {
+    if (shouldForceVoxyRedownload) {
         for (auto it = m_hashCache.begin(); it != m_hashCache.end(); ) {
             if (it.key().contains(".voxy", Qt::CaseInsensitive)) {
                 it = m_hashCache.erase(it);
@@ -315,16 +320,16 @@ void SyncedInstanceUpdateTask::manifestFetched()
         bool isCacheFolder = cleanPath.contains(".voxy/saves/cozycreations.modpack.gg", Qt::CaseInsensitive);
         bool isOptionsFile = cleanPath.endsWith("options.txt", Qt::CaseInsensitive);
 
-        if (isCacheFolder && voxySeeded && !m_forceRepair && !forceVoxyRedownload) {
+        if (isCacheFolder && voxySeeded && !m_forceRepair && !shouldForceVoxyRedownload) {
             // Voxy cache directory is already seeded & present on disk:
             // Do not re-download individual files inside it (RocksDB compaction removes old .sst files)
             needsDownload = false;
         } else if (!info.exists()) {
             needsDownload = true;
-        } else if (!m_forceRepair && !forceVoxyRedownload && isCacheFolder) {
+        } else if (!m_forceRepair && !shouldForceVoxyRedownload && isCacheFolder) {
             // Cache files exist locally and force repair is not active: preserve local modifications
             needsDownload = false;
-        } else if (!m_forceRepair && isOptionsFile && !forceConfigOverwrite) {
+        } else if (!m_forceRepair && isOptionsFile && !shouldForceConfigOverwrite) {
             // options.txt exists locally, force repair is not active, and update does not force config overwrite: preserve local modifications
             needsDownload = false;
         } else {
