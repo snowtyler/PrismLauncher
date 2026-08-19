@@ -201,6 +201,7 @@ void LauncherPage::applySettings()
         APPLICATION->updater()->setAutomaticallyChecksForUpdates(ui->autoUpdateCheckBox->isChecked());
         APPLICATION->updater()->setUpdateCheckInterval(ui->updateIntervalSpinBox->value() * 3600);
     }
+    s->set("CheckLauncherUpdatesOnStartup", ui->autoLauncherUpdateCheckBox->isChecked());
     s->set("CheckModpackUpdatesOnStartup", ui->autoModpackUpdateCheckBox->isChecked());
 
     s->set("MenuBarInsteadOfToolBar", ui->preferMenuBarCheckBox->isChecked());
@@ -263,6 +264,7 @@ void LauncherPage::loadSettings()
         ui->autoUpdateCheckBox->setChecked(APPLICATION->updater()->getAutomaticallyChecksForUpdates());
         ui->updateIntervalSpinBox->setValue(APPLICATION->updater()->getUpdateCheckInterval() / 3600);
     }
+    ui->autoLauncherUpdateCheckBox->setChecked(s->get("CheckLauncherUpdatesOnStartup").toBool());
     ui->autoModpackUpdateCheckBox->setChecked(s->get("CheckModpackUpdatesOnStartup").toBool());
 
     ui->preferMenuBarCheckBox->setChecked(s->get("MenuBarInsteadOfToolBar").toBool());

@@ -121,11 +121,22 @@ void NetRequest::executeTask()
 
     m_last_progress_time = m_clock.now();
     m_last_progress_bytes = 0;
+    m_actualBytesReceived = 0;
 
     auto rep = getReply(request);
     if (rep == nullptr)  // it failed
         return;
+    rep->setReadBufferSize(4 * 1024 * 1024);
     m_reply.reset(rep);
+    connect(rep, &QNetworkReply::metaDataChanged, this, [this]() {
+        if (m_reply && m_expectedSize <= 0) {
+            bool ok = false;
+            qint64 headerLen = m_reply->rawHeader("Content-Length").toLongLong(&ok);
+            if (ok && headerLen > 0) {
+                m_expectedSize = headerLen;
+            }
+        }
+    });
     connect(rep, &QNetworkReply::uploadProgress, this, &NetRequest::onProgress);
     connect(rep, &QNetworkReply::downloadProgress, this, &NetRequest::onProgress);
     connect(rep, &QNetworkReply::finished, this, &NetRequest::downloadFinished);
@@ -136,32 +147,51 @@ void NetRequest::executeTask()
 
 void NetRequest::onProgress(qint64 bytesReceived, qint64 bytesTotal)
 {
+    if (m_expectedSize <= 0 && m_reply) {
+        bool ok = false;
+        qint64 headerLen = m_reply->rawHeader("Content-Length").toLongLong(&ok);
+        if (ok && headerLen > 0) {
+            m_expectedSize = headerLen;
+        }
+    }
+
+    qint64 currentBytes = std::max(bytesReceived, m_actualBytesReceived);
+    qint64 realTotal = (m_expectedSize > 0) ? m_expectedSize : bytesTotal;
+    if (currentBytes > realTotal && realTotal > 0) {
+        realTotal = currentBytes;
+    }
+
     auto now = m_clock.now();
     auto elapsed = now - m_last_progress_time;
 
     // use milliseconds for speed precision
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed);
-    auto bytes_received_since = bytesReceived - m_last_progress_bytes;
-    auto dl_speed_bps = (double)bytes_received_since / elapsed_ms.count() * 1000;
-    auto remaining_time_s = (bytesTotal - bytesReceived) / dl_speed_bps;
+    auto bytes_received_since = currentBytes - m_last_progress_bytes;
 
-    //: Current amount of bytes downloaded, out of the total amount of bytes in the download
-    QString dl_progress =
-        tr("%1 / %2").arg(StringUtils::humanReadableFileSize(bytesReceived)).arg(StringUtils::humanReadableFileSize(bytesTotal));
+    if (elapsed_ms.count() >= 100 || currentBytes == realTotal) {
+        auto dl_speed_bps = (elapsed_ms.count() > 0) ? ((double)bytes_received_since / elapsed_ms.count() * 1000) : 0.0;
+        auto remaining_time_s = (dl_speed_bps > 0) ? ((realTotal - currentBytes) / dl_speed_bps) : 0;
 
-    QString dl_speed_str;
-    if (elapsed_ms.count() > 0) {
-        auto str_eta = bytesTotal > 0 ? Time::humanReadableDuration(remaining_time_s) : tr("unknown");
-        //: Download speed, in bytes per second (remaining download time in parenthesis)
-        dl_speed_str = tr("%1 /s (%2)").arg(StringUtils::humanReadableFileSize(dl_speed_bps)).arg(str_eta);
-    } else {
-        //: Download speed at 0 bytes per second
-        dl_speed_str = tr("0 B/s");
+        //: Current amount of bytes downloaded, out of the total amount of bytes in the download
+        QString dl_progress =
+            tr("%1 / %2").arg(StringUtils::humanReadableFileSize(currentBytes)).arg(StringUtils::humanReadableFileSize(realTotal));
+
+        QString dl_speed_str;
+        if (elapsed_ms.count() > 0 && dl_speed_bps > 0) {
+            auto str_eta = realTotal > 0 ? Time::humanReadableDuration(remaining_time_s) : tr("unknown");
+            //: Download speed, in bytes per second (remaining download time in parenthesis)
+            dl_speed_str = tr("%1 /s (%2)").arg(StringUtils::humanReadableFileSize(dl_speed_bps)).arg(str_eta);
+        } else {
+            //: Download speed at 0 bytes per second
+            dl_speed_str = tr("0 B/s");
+        }
+
+        setDetails(dl_progress + "\n" + dl_speed_str);
+        m_last_progress_time = now;
+        m_last_progress_bytes = currentBytes;
     }
 
-    setDetails(dl_progress + "\n" + dl_speed_str);
-
-    setProgress(bytesReceived, bytesTotal);
+    setProgress(currentBytes, realTotal);
 }
 
 void NetRequest::downloadError(QNetworkReply::NetworkError error)
@@ -356,13 +386,23 @@ void NetRequest::downloadFinished()
 void NetRequest::downloadReadyRead()
 {
     if (m_state == State::Running) {
+        if (m_expectedSize <= 0 && m_reply) {
+            bool ok = false;
+            qint64 headerLen = m_reply->rawHeader("Content-Length").toLongLong(&ok);
+            if (ok && headerLen > 0) {
+                m_expectedSize = headerLen;
+            }
+        }
         auto data = m_reply->readAll();
+        m_actualBytesReceived += data.size();
         m_state = m_sink->write(data);
         if (replyStatusCode() >= 400) {
             m_errorResponse.append(data);
         }
         if (m_state == State::Failed) {
             qCCritical(logCat) << getUid().toString() << "Failed to process response chunk:" << m_sink->failReason();
+        } else {
+            onProgress(m_actualBytesReceived, m_expectedSize);
         }
         // qDebug() << "Request" << m_url.toString() << "gained" << data.size() << "bytes";
     } else {

@@ -45,18 +45,22 @@
 
 #include "ui/widgets/SubTaskProgressBar.h"
 
-// map a value in a numeric range of an arbitrary type to between 0 and INT_MAX
-// for getting the best precision out of the qt progress bar
+// map a value in a numeric range of an arbitrary type to between 0 and 10000
+// for high precision (0.01%) without overflowing Qt's internal integer arithmetic
 template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
 std::tuple<int, int> map_int_zero_max(T current, T range_max, T range_min)
 {
-    int int_max = std::numeric_limits<int>::max();
-
+    constexpr int scale = 10000;
     auto type_range = range_max - range_min;
-    double percentage = static_cast<double>(current - range_min) / static_cast<double>(type_range);
-    int mapped_current = percentage * int_max;
+    if (type_range <= 0) {
+        return { 0, scale };
+    }
 
-    return { mapped_current, int_max };
+    double percentage = static_cast<double>(current - range_min) / static_cast<double>(type_range);
+    percentage = std::clamp(percentage, 0.0, 1.0);
+    int mapped_current = static_cast<int>(percentage * scale);
+
+    return { mapped_current, scale };
 }
 
 ProgressDialog::ProgressDialog(QWidget* parent) : QDialog(parent), ui(new Ui::ProgressDialog)
@@ -262,8 +266,13 @@ void ProgressDialog::changeStepProgress(TaskStepProgress const& task_progress)
 
 void ProgressDialog::changeProgress(qint64 current, qint64 total)
 {
-    ui->globalProgressBar->setMaximum(total);
-    ui->globalProgressBar->setValue(current);
+    if (total <= 0) {
+        ui->globalProgressBar->setRange(0, 0);
+    } else {
+        auto const [mapped_current, mapped_total] = map_int_zero_max<qint64>(std::max<qint64>(0, current), total, 0);
+        ui->globalProgressBar->setRange(0, mapped_total);
+        ui->globalProgressBar->setValue(mapped_current);
+    }
 }
 
 void ProgressDialog::keyPressEvent(QKeyEvent* e)

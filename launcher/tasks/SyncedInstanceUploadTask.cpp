@@ -6,6 +6,10 @@
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
 #include "minecraft/Component.h"
+#include "FileSystem.h"
+#include "MMCZip.h"
+#include "archive/ArchiveWriter.h"
+#include "StringUtils.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -97,7 +101,16 @@ void SyncedInstanceUploadTask::remoteManifestFetched()
         QByteArray data = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(data);
         if (!doc.isNull() && doc.isObject()) {
-            QJsonArray files = doc.object()["files"].toArray();
+            QJsonObject remoteObj = doc.object();
+            QString remoteVoxyResetVer = remoteObj["voxy_cache_reset_version"].toString();
+            bool remoteForceVoxy = remoteObj["force_voxy_redownload"].toBool(false);
+            QString remoteVersion = remoteObj["version"].toString();
+            if (remoteVoxyResetVer.isEmpty() && remoteForceVoxy && !remoteVersion.isEmpty()) {
+                remoteVoxyResetVer = remoteVersion;
+            }
+            m_remoteVoxyResetVersion = remoteVoxyResetVer;
+
+            QJsonArray files = remoteObj["files"].toArray();
             for (int i = 0; i < files.size(); ++i) {
                 QJsonObject fileObj = files[i].toObject();
                 remoteHashes[fileObj["path"].toString()] = fileObj["hash"].toString().toLower();
@@ -123,6 +136,64 @@ SyncedInstanceUploadTask::DiffResult SyncedInstanceUploadTask::computeDiff(const
     QSet<QString> localRelPaths;
     int total = m_selectedFiles.size();
 
+    // Check if any selected files are inside Voxy cache directory
+    QString voxyRelPrefix;
+    for (const QString& relPath : m_selectedFiles) {
+        QString clean = QString(relPath).replace('\\', '/');
+        if (clean.contains(".voxy/saves/cozycreations.modpack.gg", Qt::CaseInsensitive)) {
+            if (clean.startsWith("minecraft/", Qt::CaseInsensitive)) {
+                voxyRelPrefix = "minecraft/.voxy/saves/cozycreations.modpack.gg";
+            } else {
+                voxyRelPrefix = ".voxy/saves/cozycreations.modpack.gg";
+            }
+            break;
+        }
+    }
+
+    if (!voxyRelPrefix.isEmpty()) {
+        QString voxyAbsDir = FS::PathCombine(m_instance->instanceRoot(), voxyRelPrefix);
+        if (QDir(voxyAbsDir).exists()) {
+            setStatus(tr("Packaging Voxy cache into archive..."));
+            QString tempDir = FS::PathCombine(m_instance->instanceRoot(), ".tmp");
+            QDir().mkpath(tempDir);
+            QString tempZipPath = FS::PathCombine(tempDir, "voxy_cache.zip");
+            FS::deletePath(tempZipPath);
+
+            QFileInfoList voxyFilesList;
+            MMCZip::collectFileListRecursively(voxyAbsDir, nullptr, &voxyFilesList, nullptr);
+
+            if (!voxyFilesList.isEmpty()) {
+                MMCZip::ArchiveWriter zip(tempZipPath);
+                if (zip.open()) {
+                    QDir baseDir(voxyAbsDir);
+                    for (const auto& fi : voxyFilesList) {
+                        QString entryRel = baseDir.relativeFilePath(fi.absoluteFilePath());
+                        zip.addFile(fi.absoluteFilePath(), entryRel);
+                    }
+                    zip.close();
+
+                    QString zipHash = Hashing::hash(tempZipPath, Hashing::Algorithm::Sha1).toLower();
+                    qint64 zipSize = QFileInfo(tempZipPath).size();
+
+                    result.voxyCacheObj["file"] = "voxy_cache.zip";
+                    result.voxyCacheObj["hash"] = zipHash;
+                    result.voxyCacheObj["size"] = zipSize;
+
+                    localRelPaths.insert("voxy_cache.zip");
+
+                    if (!remoteHashes.contains("voxy_cache.zip") || remoteHashes["voxy_cache.zip"] != zipHash || m_forceVoxyRedownload) {
+                        SyncAction voxyAction;
+                        voxyAction.type = "PUT";
+                        voxyAction.relPath = "voxy_cache.zip";
+                        voxyAction.localOverridePath = tempZipPath;
+                        voxyAction.size = zipSize;
+                        result.actions.append(voxyAction);
+                    }
+                }
+            }
+        }
+    }
+
     for (int i = 0; i < total; ++i) {
         if (m_aborted) {
             result.error = tr("Upload aborted.");
@@ -130,6 +201,13 @@ SyncedInstanceUploadTask::DiffResult SyncedInstanceUploadTask::computeDiff(const
         }
 
         const QString& relPath = m_selectedFiles[i];
+        QString cleanPath = QString(relPath).replace('\\', '/');
+
+        // Exclude individual Voxy cache files (they are packaged into voxy_cache.zip)
+        if (cleanPath.contains(".voxy/saves/cozycreations.modpack.gg", Qt::CaseInsensitive)) {
+            continue;
+        }
+
         QString absPath = m_instance->instanceRoot() + "/" + relPath;
         QFileInfo fi(absPath);
         if (!fi.exists() || !fi.isFile()) {
@@ -150,7 +228,7 @@ SyncedInstanceUploadTask::DiffResult SyncedInstanceUploadTask::computeDiff(const
         result.finalFiles.append(fileObj);
 
         if (!remoteHashes.contains(relPath) || remoteHashes[relPath] != localHash) {
-            result.actions.append({"PUT", relPath});
+            result.actions.append({"PUT", relPath, QString(), fi.size()});
         }
 
         if (i % 5 == 0 || i == total - 1) {
@@ -167,8 +245,14 @@ SyncedInstanceUploadTask::DiffResult SyncedInstanceUploadTask::computeDiff(const
             return result;
         }
         QString relPath = it.key();
+        QString clean = QString(relPath).replace('\\', '/');
+        // Delete any old individual Voxy SST files from remote storage
+        if (clean.contains(".voxy/saves/cozycreations.modpack.gg", Qt::CaseInsensitive)) {
+            result.actions.append({"DELETE", relPath, QString(), 0});
+            continue;
+        }
         if (!localRelPaths.contains(relPath)) {
-            result.actions.append({"DELETE", relPath});
+            result.actions.append({"DELETE", relPath, QString(), 0});
         }
     }
 
@@ -190,9 +274,18 @@ void SyncedInstanceUploadTask::diffComputed()
     }
 
     m_finalFiles = result.finalFiles;
+    m_voxyCacheObj = result.voxyCacheObj;
     m_actions = result.actions;
 
-    qDebug() << "Sync plan generated: total actions =" << m_actions.size();
+    m_totalBytes = 0;
+    m_completedBytes = 0;
+    for (const auto& act : m_actions) {
+        if (act.type == "PUT") {
+            m_totalBytes += act.size;
+        }
+    }
+
+    qDebug() << "Sync plan generated: total actions =" << m_actions.size() << "total upload bytes =" << m_totalBytes;
     m_actionIndex = 0;
     performSync();
 }
@@ -212,10 +305,22 @@ void SyncedInstanceUploadTask::performSync()
 
     SyncAction action = m_actions[m_actionIndex];
     QString fileName = QFileInfo(action.relPath).fileName();
-    setStatus(tr("Syncing files (%1/%2): %3 %4")
-              .arg(QString::number(m_actionIndex + 1), QString::number(m_actions.size()), action.type, fileName));
+
+    if (m_totalBytes > 0) {
+        setProgress(m_completedBytes, m_totalBytes);
+    } else {
+        setProgress(m_actionIndex, m_actions.size());
+    }
+
+    if (action.type == "PUT") {
+        QString sizeStr = StringUtils::humanReadableFileSize(action.size);
+        setStatus(tr("Uploading (%1/%2): %3 (0 B / %4, 0%)")
+                  .arg(QString::number(m_actionIndex + 1), QString::number(m_actions.size()), fileName, sizeStr));
+    } else {
+        setStatus(tr("Deleting (%1/%2): %3")
+                  .arg(QString::number(m_actionIndex + 1), QString::number(m_actions.size()), fileName));
+    }
     setDetails(action.relPath);
-    setProgress(m_actionIndex, m_actions.size());
 
     // Build signed PUT/DELETE request using canonical percent-encoding
     QStringList segments = (m_bucket + "/packs/" + m_shortcode + "/" + action.relPath).split('/', Qt::SkipEmptyParts);
@@ -226,7 +331,7 @@ void SyncedInstanceUploadTask::performSync()
     QUrl url = QUrl::fromEncoded(m_endpoint.toUtf8() + encodedPath);
 
     if (action.type == "PUT") {
-        QString absPath = m_instance->instanceRoot() + "/" + action.relPath;
+        QString absPath = action.localOverridePath.isEmpty() ? (m_instance->instanceRoot() + "/" + action.relPath) : action.localOverridePath;
         QFile file(absPath);
         if (!file.open(QFile::ReadOnly)) {
             emitFailed(tr("Failed to read file for upload: %1").arg(action.relPath));
@@ -242,6 +347,24 @@ void SyncedInstanceUploadTask::performSync()
         }
 
         m_currentActionReply = APPLICATION->network()->put(req, data);
+
+        connect(m_currentActionReply, &QNetworkReply::uploadProgress, this, [this, action, fileName](qint64 bytesSent, qint64 bytesTotal) {
+            qint64 fileTotal = (bytesTotal > 0) ? bytesTotal : action.size;
+            if (fileTotal > 0) {
+                QString sentStr = StringUtils::humanReadableFileSize(bytesSent);
+                QString totalStr = StringUtils::humanReadableFileSize(fileTotal);
+                int percent = qBound(0, static_cast<int>((bytesSent * 100) / fileTotal), 100);
+
+                setStatus(tr("Uploading (%1/%2): %3 (%4 / %5, %6%)")
+                          .arg(QString::number(m_actionIndex + 1), QString::number(m_actions.size()), fileName, sentStr, totalStr, QString::number(percent)));
+                setDetails(action.relPath);
+
+                if (m_totalBytes > 0) {
+                    qint64 overallProgress = qMin(m_totalBytes, m_completedBytes + bytesSent);
+                    setProgress(overallProgress, m_totalBytes);
+                }
+            }
+        });
     } else {
         SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, QByteArray(), m_accessKey, m_secretKey);
 
@@ -260,6 +383,11 @@ void SyncedInstanceUploadTask::actionFinished()
 {
     if (!m_currentActionReply) {
         return;
+    }
+
+    SyncAction action = m_actions[m_actionIndex];
+    if (action.type == "PUT") {
+        m_completedBytes += action.size;
     }
 
     m_currentActionReply->deleteLater();
@@ -288,8 +416,20 @@ void SyncedInstanceUploadTask::uploadManifest()
     if (docObj["version"].toString().isEmpty()) {
         docObj["version"] = "1.0.0";
     }
+    QString uploadVersion = docObj["version"].toString();
+    if (m_forceVoxyRedownload) {
+        docObj["voxy_cache_reset_version"] = uploadVersion;
+        docObj["force_voxy_redownload"] = true;
+    } else if (!m_remoteVoxyResetVersion.isEmpty()) {
+        docObj["voxy_cache_reset_version"] = m_remoteVoxyResetVersion;
+        docObj["force_voxy_redownload"] = false;
+    } else {
+        docObj["force_voxy_redownload"] = false;
+    }
+    if (!m_voxyCacheObj.isEmpty()) {
+        docObj["voxy_cache"] = m_voxyCacheObj;
+    }
     docObj["force_config_overwrite"] = m_forceConfigOverwrite;
-    docObj["force_voxy_redownload"] = m_forceVoxyRedownload;
     docObj["files"] = m_finalFiles;
 
     // If it's a MinecraftInstance we can try to extract loader configurations
@@ -371,6 +511,13 @@ void SyncedInstanceUploadTask::uploadManifest()
     }
 
     m_currentActionReply = APPLICATION->network()->put(req, m_manifestData);
+    connect(m_currentActionReply, &QNetworkReply::uploadProgress, this, [this](qint64 bytesSent, qint64 bytesTotal) {
+        if (bytesTotal > 0) {
+            QString sentStr = StringUtils::humanReadableFileSize(bytesSent);
+            QString totalStr = StringUtils::humanReadableFileSize(bytesTotal);
+            setStatus(tr("Uploading manifest (%1 / %2)...").arg(sentStr, totalStr));
+        }
+    });
     connect(m_currentActionReply, &QNetworkReply::finished, this, &SyncedInstanceUploadTask::manifestUploaded);
 }
 
@@ -424,6 +571,13 @@ void SyncedInstanceUploadTask::uploadBanner()
     }
 
     m_currentActionReply = APPLICATION->network()->put(req, bannerData);
+    connect(m_currentActionReply, &QNetworkReply::uploadProgress, this, [this](qint64 bytesSent, qint64 bytesTotal) {
+        if (bytesTotal > 0) {
+            QString sentStr = StringUtils::humanReadableFileSize(bytesSent);
+            QString totalStr = StringUtils::humanReadableFileSize(bytesTotal);
+            setStatus(tr("Uploading banner (%1 / %2)...").arg(sentStr, totalStr));
+        }
+    });
     connect(m_currentActionReply, &QNetworkReply::finished, this, &SyncedInstanceUploadTask::bannerUploaded);
 }
 

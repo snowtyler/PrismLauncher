@@ -5,6 +5,9 @@
 #include "modplatform/helpers/HashUtils.h"
 #include "net/ChecksumValidator.h"
 #include "net/Download.h"
+#include "Version.h"
+#include "MMCZip.h"
+#include "StringUtils.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -126,6 +129,11 @@ void SyncedInstanceUpdateTask::executeTask()
 
     setStatus(tr("Checking for modpack updates..."));
 
+    QString tmpDirPath = FS::PathCombine(m_instance->instanceRoot(), ".tmp");
+    if (QDir(tmpDirPath).exists()) {
+        QDir(tmpDirPath).removeRecursively();
+    }
+
     QString shortcode = m_instance->settings()->get("SyncShortcode").toString();
     if (shortcode.isEmpty()) {
         emitFailed(tr("Instance does not have a synchronization shortcode configured."));
@@ -172,6 +180,9 @@ void SyncedInstanceUpdateTask::manifestFetched()
     QJsonArray files = obj["files"].toArray();
     bool forceConfigOverwrite = obj["force_config_overwrite"].toBool(false);
     bool forceVoxyRedownload = obj["force_voxy_redownload"].toBool(false);
+    QString voxyResetVersion = obj["voxy_cache_reset_version"].toString();
+    QJsonObject voxyCacheObj = obj["voxy_cache"].toObject();
+    bool hasVoxyCacheZip = !voxyCacheObj.isEmpty();
 
     bool overrideMem = obj["override_memory"].toBool(false);
     if (overrideMem) {
@@ -195,15 +206,46 @@ void SyncedInstanceUpdateTask::manifestFetched()
 
     QString currentVersion = m_instance->settings()->get("SyncVersion").toString();
     bool isNewVersion = currentVersion.isEmpty() || currentVersion != m_targetVersion;
-    bool shouldForceVoxyRedownload = forceVoxyRedownload && (isNewVersion || m_forceRepair);
     bool shouldForceConfigOverwrite = forceConfigOverwrite && (isNewVersion || m_forceRepair);
 
+    // Helper to check if Voxy cache directory has already been seeded on disk
+    auto isVoxyCacheSeeded = [this]() {
+        QString path1 = FS::PathCombine(m_instance->instanceRoot(), "minecraft/.voxy/saves/cozycreations.modpack.gg");
+        QString path2 = FS::PathCombine(m_instance->instanceRoot(), ".voxy/saves/cozycreations.modpack.gg");
+        QDir dir1(path1);
+        QDir dir2(path2);
+        if (dir1.exists() && !dir1.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) {
+            return true;
+        }
+        if (dir2.exists() && !dir2.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) {
+            return true;
+        }
+        return false;
+    };
+
+    bool voxySeeded = isVoxyCacheSeeded();
+
+    bool shouldForceVoxyRedownload = false;
+    if (m_forceRepair || !voxySeeded) {
+        shouldForceVoxyRedownload = true;
+    } else if (isNewVersion) {
+        if (!voxyResetVersion.isEmpty()) {
+            if (currentVersion.isEmpty() || Version(currentVersion) < Version(voxyResetVersion)) {
+                shouldForceVoxyRedownload = true;
+            }
+        } else if (forceVoxyRedownload) {
+            shouldForceVoxyRedownload = true;
+        }
+    }
+
     qDebug() << "Local version:" << currentVersion << "Target version:" << m_targetVersion
+             << "Voxy reset version:" << voxyResetVersion << "Has Voxy zip:" << hasVoxyCacheZip
+             << "Voxy seeded:" << voxySeeded
              << "Force config overwrite:" << forceConfigOverwrite << "(active:" << shouldForceConfigOverwrite << ")"
              << "Force Voxy redownload:" << forceVoxyRedownload << "(active:" << shouldForceVoxyRedownload << ")";
 
-    if (shouldForceVoxyRedownload) {
-        qDebug() << "Force Voxy cache redownload requested for new version/repair. Deleting local Voxy cache directories...";
+    if (shouldForceVoxyRedownload && !hasVoxyCacheZip) {
+        qDebug() << "Force Voxy cache redownload requested for new version/repair (legacy individual files). Deleting local Voxy cache directories...";
         QSet<QString> voxyDirsToDelete;
         voxyDirsToDelete.insert(FS::PathCombine(m_instance->instanceRoot(), "minecraft/.voxy/saves/cozycreations.modpack.gg"));
         voxyDirsToDelete.insert(FS::PathCombine(m_instance->instanceRoot(), ".voxy/saves/cozycreations.modpack.gg"));
@@ -226,23 +268,6 @@ void SyncedInstanceUpdateTask::manifestFetched()
             }
         }
     }
-
-    // Helper to check if Voxy cache directory has already been seeded on disk
-    auto isVoxyCacheSeeded = [this]() {
-        QString path1 = FS::PathCombine(m_instance->instanceRoot(), "minecraft/.voxy/saves/cozycreations.modpack.gg");
-        QString path2 = FS::PathCombine(m_instance->instanceRoot(), ".voxy/saves/cozycreations.modpack.gg");
-        QDir dir1(path1);
-        QDir dir2(path2);
-        if (dir1.exists() && !dir1.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) {
-            return true;
-        }
-        if (dir2.exists() && !dir2.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty()) {
-            return true;
-        }
-        return false;
-    };
-
-    bool voxySeeded = isVoxyCacheSeeded();
     qDebug() << "Voxy cache seeded status:" << voxySeeded;
 
     // Fast-Path: If local version matches target version and non-empty, check file existence & size (unless force repair or active force voxy redownload is requested)
@@ -304,12 +329,13 @@ void SyncedInstanceUpdateTask::manifestFetched()
     }
 
     QStringList filesToKeep;
-    QList<QPair<QString, QString>> filesToDownload; // pair: <relPath, hash>
+    QList<FileDownloadItem> filesToDownload;
 
     for (int i = 0; i < files.size(); ++i) {
         QJsonObject fileObj = files[i].toObject();
         QString relPath = fileObj["path"].toString();
         QString hash = fileObj["hash"].toString().toLower();
+        qint64 fileSize = fileObj.contains("size") ? fileObj["size"].toVariant().toLongLong() : 0;
 
         filesToKeep.append(relPath);
 
@@ -317,10 +343,13 @@ void SyncedInstanceUpdateTask::manifestFetched()
         QString localPath = FS::PathCombine(m_instance->instanceRoot(), relPath);
         QFileInfo info(localPath);
         bool needsDownload = false;
-        bool isCacheFolder = cleanPath.contains(".voxy/saves/cozycreations.modpack.gg", Qt::CaseInsensitive);
+        bool isCacheFolder = cleanPath.contains(".voxy", Qt::CaseInsensitive) || cleanPath.endsWith(".sst", Qt::CaseInsensitive);
         bool isOptionsFile = cleanPath.endsWith("options.txt", Qt::CaseInsensitive);
 
-        if (isCacheFolder && voxySeeded && !m_forceRepair && !shouldForceVoxyRedownload) {
+        if (hasVoxyCacheZip && isCacheFolder) {
+            // Superseded by voxy_cache.zip
+            needsDownload = false;
+        } else if (isCacheFolder && voxySeeded && !m_forceRepair && !shouldForceVoxyRedownload) {
             // Voxy cache directory is already seeded & present on disk:
             // Do not re-download individual files inside it (RocksDB compaction removes old .sst files)
             needsDownload = false;
@@ -349,8 +378,22 @@ void SyncedInstanceUpdateTask::manifestFetched()
         }
 
         if (needsDownload) {
-            filesToDownload.append({relPath, hash});
+            filesToDownload.append({relPath, hash, fileSize});
         }
+    }
+
+    if (hasVoxyCacheZip && shouldForceVoxyRedownload) {
+        QString voxyZipFile = voxyCacheObj["file"].toString("voxy_cache.zip");
+        QString voxyHash = voxyCacheObj["hash"].toString().toLower();
+        qint64 voxySize = voxyCacheObj.contains("size") ? voxyCacheObj["size"].toVariant().toLongLong() : 0;
+        m_hasVoxyZipDownload = true;
+        m_voxyZipPath = FS::PathCombine(m_instance->instanceRoot(), ".tmp/" + voxyZipFile);
+        if (QDir(FS::PathCombine(m_instance->instanceRoot(), "minecraft")).exists()) {
+            m_voxyExtractDir = FS::PathCombine(m_instance->instanceRoot(), "minecraft/.voxy/saves/cozycreations.modpack.gg");
+        } else {
+            m_voxyExtractDir = FS::PathCombine(m_instance->instanceRoot(), ".voxy/saves/cozycreations.modpack.gg");
+        }
+        filesToDownload.append({ ".tmp/" + voxyZipFile, voxyHash, voxySize });
     }
 
     // Clean up any files that are no longer in the manifest
@@ -368,31 +411,84 @@ void SyncedInstanceUpdateTask::manifestFetched()
 
     m_downloadedFiles = filesToDownload;
 
+    m_totalDownloadBytes = 0;
+    m_completedDownloadBytes = 0;
+    for (const auto& item : filesToDownload) {
+        m_totalDownloadBytes += item.size;
+    }
+
     int totalFiles = filesToDownload.size();
-    setStatus(tr("Downloading updates (0/%1)...").arg(totalFiles));
-    setProgress(0, totalFiles);
+    if (m_totalDownloadBytes > 0) {
+        setStatus(tr("Downloading updates: 0 B / %1").arg(StringUtils::humanReadableFileSize(m_totalDownloadBytes)));
+        setProgress(0, m_totalDownloadBytes);
+    } else {
+        setStatus(tr("Downloading updates (0/%1)...").arg(totalFiles));
+        setProgress(0, totalFiles);
+    }
 
     m_downloadJob.reset(new NetJob(tr("Downloading pack updates"), APPLICATION->network()));
 
     auto currentFileIndex = std::make_shared<int>(0);
+    auto activeBytes = std::make_shared<QVector<qint64>>(filesToDownload.size(), 0);
 
-    for (const auto& pair : filesToDownload) {
-        QString relPath = pair.first;
-        QString hash = pair.second;
+    for (int i = 0; i < filesToDownload.size(); ++i) {
+        const auto& item = filesToDownload[i];
+        int fileIdx = i;
+        QString relPath = item.relPath;
+        QString hash = item.hash;
+        qint64 expectedSize = item.size;
         QString fileName = QFileInfo(relPath).fileName();
 
         QString destPath = m_instance->instanceRoot() + "/" + relPath;
         QFileInfo info(destPath);
         QDir().mkpath(info.dir().absolutePath());
 
-        QString fileUrl = publicUrl + "packs/" + shortcode + "/" + relPath;
+        QString fileUrl = publicUrl + "packs/" + shortcode + "/" + (relPath.startsWith(".tmp/") ? relPath.mid(5) : relPath);
         auto download = Net::Download::makeFile(QUrl(fileUrl), destPath);
+        download->setExpectedSize(expectedSize);
         download->addValidator(new Net::ChecksumValidator(QCryptographicHash::Sha1, hash));
 
         connect(download.get(), &Task::started, this, [this, relPath, fileName, currentFileIndex, totalFiles]() {
             (*currentFileIndex)++;
-            setStatus(tr("Downloading (%1/%2): %3").arg(*currentFileIndex).arg(totalFiles).arg(fileName));
             setDetails(relPath);
+        });
+
+        connect(download.get(), &Task::progress, this, [this, fileName, expectedSize, activeBytes, fileIdx](qint64 current, qint64 total) {
+            if (current >= 0) {
+                qint64 fileTotal = (expectedSize > 0) ? expectedSize : total;
+                fileTotal = std::max({fileTotal, current, expectedSize});
+                (*activeBytes)[fileIdx] = current;
+
+                if (fileTotal > 0) {
+                    QString curStr = StringUtils::humanReadableFileSize(current);
+                    QString totStr = StringUtils::humanReadableFileSize(fileTotal);
+                    setDetails(tr("%1 (%2 / %3)").arg(fileName, curStr, totStr));
+                }
+
+                if (m_totalDownloadBytes > 0) {
+                    qint64 currentTotal = 0;
+                    for (qint64 b : *activeBytes) {
+                        currentTotal += b;
+                    }
+                    currentTotal = qBound<qint64>(0, currentTotal, m_totalDownloadBytes);
+                    QString curTotalStr = StringUtils::humanReadableFileSize(currentTotal);
+                    QString maxTotalStr = StringUtils::humanReadableFileSize(m_totalDownloadBytes);
+                    setStatus(tr("Downloading updates: %1 / %2").arg(curTotalStr, maxTotalStr));
+                    setProgress(currentTotal, m_totalDownloadBytes);
+                }
+            }
+        });
+
+        connect(download.get(), &Task::succeeded, this, [this, expectedSize, activeBytes, fileIdx]() {
+            (*activeBytes)[fileIdx] = (expectedSize > 0) ? expectedSize : (*activeBytes)[fileIdx];
+            if (m_totalDownloadBytes > 0) {
+                qint64 currentTotal = 0;
+                for (qint64 b : *activeBytes) {
+                    currentTotal += b;
+                }
+                currentTotal = qBound<qint64>(0, currentTotal, m_totalDownloadBytes);
+                setProgress(currentTotal, m_totalDownloadBytes);
+            }
         });
 
         m_downloadJob->addNetAction(download);
@@ -400,7 +496,6 @@ void SyncedInstanceUpdateTask::manifestFetched()
 
     connect(m_downloadJob.get(), &NetJob::succeeded, this, &SyncedInstanceUpdateTask::downloadSucceeded);
     connect(m_downloadJob.get(), &NetJob::failed, this, &SyncedInstanceUpdateTask::downloadFailed);
-    connect(m_downloadJob.get(), &NetJob::progress, this, &SyncedInstanceUpdateTask::downloadProgress);
 
     m_downloadJob->start();
 }
@@ -454,8 +549,27 @@ void SyncedInstanceUpdateTask::deleteOrphanedFiles(const QStringList& filesToKee
 
 void SyncedInstanceUpdateTask::downloadSucceeded()
 {
-    for (const auto& pair : m_downloadedFiles) {
-        QString relPath = pair.first;
+    if (m_hasVoxyZipDownload && QFile::exists(m_voxyZipPath)) {
+        setStatus(tr("Extracting Voxy cache..."));
+        setDetails(tr("Extracting %1 into game directory...").arg("voxy_cache.zip"));
+        setProgress(0, 0);
+        qDebug() << "Extracting Voxy cache from" << m_voxyZipPath << "to" << m_voxyExtractDir;
+        QDir(m_voxyExtractDir).removeRecursively();
+        QDir().mkpath(m_voxyExtractDir);
+        MMCZip::extractDir(m_voxyZipPath, m_voxyExtractDir);
+        QFile::remove(m_voxyZipPath);
+    }
+
+    QString tmpDirPath = FS::PathCombine(m_instance->instanceRoot(), ".tmp");
+    if (QDir(tmpDirPath).exists()) {
+        QDir(tmpDirPath).removeRecursively();
+    }
+
+    for (const auto& item : m_downloadedFiles) {
+        QString relPath = item.relPath;
+        if (relPath.startsWith(".tmp/")) {
+            continue;
+        }
         QString absPath = m_instance->instanceRoot() + "/" + relPath;
         QFileInfo info(absPath);
         if (info.exists()) {
@@ -472,11 +586,21 @@ void SyncedInstanceUpdateTask::downloadSucceeded()
 
 void SyncedInstanceUpdateTask::downloadFailed(QString reason)
 {
+    QString tmpDirPath = FS::PathCombine(m_instance->instanceRoot(), ".tmp");
+    if (QDir(tmpDirPath).exists()) {
+        QDir(tmpDirPath).removeRecursively();
+    }
     emitFailed(reason);
 }
 
 void SyncedInstanceUpdateTask::downloadProgress(qint64 current, qint64 total)
 {
-    setProgress(current, total);
+    if (m_totalDownloadBytes <= 0 && total > 0 && current >= 0) {
+        setProgress(current, total);
+        QString currentStr = StringUtils::humanReadableFileSize(current);
+        QString totalStr = StringUtils::humanReadableFileSize(total);
+        int percent = qBound(0, static_cast<int>((current * 100) / total), 100);
+        setStatus(tr("Downloading updates: %1 / %2 (%3%)").arg(currentStr, totalStr, QString::number(percent)));
+    }
 }
 

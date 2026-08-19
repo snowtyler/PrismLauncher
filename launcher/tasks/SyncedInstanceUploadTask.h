@@ -43,6 +43,7 @@ private:
     QString m_bannerImagePath;
     bool m_forceConfigOverwrite = false;
     bool m_forceVoxyRedownload = false;
+    QString m_remoteVoxyResetVersion;
 
     QNetworkReply* m_manifestReply = nullptr;
     QNetworkReply* m_currentActionReply = nullptr;
@@ -56,6 +57,8 @@ private:
     struct SyncAction {
         QString type; // "PUT" or "DELETE"
         QString relPath;
+        QString localOverridePath;
+        qint64 size = 0;
     };
 
     struct DiffResult {
@@ -63,6 +66,7 @@ private:
         QString error;
         QJsonArray finalFiles;
         QList<SyncAction> actions;
+        QJsonObject voxyCacheObj;
     };
 
     QFutureWatcher<DiffResult> m_diffWatcher;
@@ -70,8 +74,11 @@ private:
 
     QList<SyncAction> m_actions;
     int m_actionIndex = 0;
+    qint64 m_totalBytes = 0;
+    qint64 m_completedBytes = 0;
 
     QJsonArray m_finalFiles; // To build the manifest at the end
+    QJsonObject m_voxyCacheObj; // Voxy cache single-zip metadata
     QByteArray m_manifestData;       // Generated manifest content
 
     void fetchRemoteManifest();

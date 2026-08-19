@@ -207,8 +207,8 @@ class Task : public QObject, public QRunnable {
     QString m_failReason = "";
     QString m_status;
     QString m_details;
-    int m_progress = 0;
-    int m_progressTotal = 100;
+    qint64 m_progress = 0;
+    qint64 m_progressTotal = 100;
 
     // TODO: Nuke in favor of QLoggingCategory
     bool m_show_debug = true;

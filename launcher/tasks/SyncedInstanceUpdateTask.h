@@ -36,6 +36,12 @@ private:
         QString hash;
     };
 
+    struct FileDownloadItem {
+        QString relPath;
+        QString hash;
+        qint64 size = 0;
+    };
+
     BaseInstance* m_instance;
     QNetworkReply* m_manifestReply = nullptr;
     NetJob::Ptr m_downloadJob;
@@ -44,7 +50,14 @@ private:
 
     QMap<QString, CachedFileInfo> m_hashCache;
     bool m_cacheDirty = false;
-    QList<QPair<QString, QString>> m_downloadedFiles;
+    QList<FileDownloadItem> m_downloadedFiles;
+
+    qint64 m_totalDownloadBytes = 0;
+    qint64 m_completedDownloadBytes = 0;
+
+    bool m_hasVoxyZipDownload = false;
+    QString m_voxyZipPath;
+    QString m_voxyExtractDir;
 
     void loadHashCache();
     void saveHashCache();

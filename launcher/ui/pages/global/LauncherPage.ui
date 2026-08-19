@@ -241,6 +241,13 @@
            </widget>
           </item>
           <item row="2" column="0" colspan="2">
+           <widget class="QCheckBox" name="autoLauncherUpdateCheckBox">
+            <property name="text">
+             <string>Check for launcher updates on startup</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
            <widget class="QCheckBox" name="autoModpackUpdateCheckBox">
             <property name="text">
              <string>Check for modpack updates on startup</string>

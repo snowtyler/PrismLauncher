@@ -39,6 +39,7 @@ class ExternalUpdater : public QObject {
      * Check for updates manually, showing the user a progress bar and an alert if no updates are found.
      */
     virtual void checkForUpdates() = 0;
+    virtual void checkForUpdates(bool triggeredByUser) const { Q_UNUSED(triggeredByUser); const_cast<ExternalUpdater*>(this)->checkForUpdates(); }
 
     /*!
      * Indicates whether or not to check for updates automatically.

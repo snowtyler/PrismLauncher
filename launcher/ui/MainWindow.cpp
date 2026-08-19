@@ -530,6 +530,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     connect(ui->actionCheckModpackUpdates, &QAction::triggered, this, &MainWindow::on_actionCheckModpackUpdates_triggered);
 
+    if (APPLICATION->updaterEnabled() && APPLICATION->settings()->get("CheckLauncherUpdatesOnStartup").toBool()) {
+        QTimer::singleShot(1000, this, [this]() {
+            if (auto updater = APPLICATION->updater()) {
+                updater->checkForUpdates(false);
+            }
+        });
+    }
+
     if (APPLICATION->settings()->get("CheckModpackUpdatesOnStartup").toBool()) {
         QTimer::singleShot(1500, this, [this]() {
             checkForModpackUpdates(true);

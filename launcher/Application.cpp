@@ -648,6 +648,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("PrivatePacks", QStringList());
         m_settings->registerSetting("AdminPassword", "syncadmin");
         m_settings->registerSetting("CheckModpackUpdatesOnStartup", true);
+        m_settings->registerSetting("CheckLauncherUpdatesOnStartup", true);
 
         // Theming
         m_settings->registerSetting("IconTheme", QString());

@@ -77,6 +77,7 @@ class NetRequest : public Task {
 
     QUrl url() const;
     void setUrl(QUrl url) { m_url = url; }
+    void setExpectedSize(qint64 size) { m_expectedSize = size; }
     int replyStatusCode() const;
     QNetworkReply::NetworkError error() const;
     QString errorString() const;
@@ -104,6 +105,8 @@ class NetRequest : public Task {
     std::chrono::steady_clock m_clock;
     std::chrono::time_point<std::chrono::steady_clock> m_last_progress_time;
     qint64 m_last_progress_bytes;
+    qint64 m_expectedSize = 0;
+    qint64 m_actualBytesReceived = 0;
 
     QNetworkAccessManager* m_network;
 
