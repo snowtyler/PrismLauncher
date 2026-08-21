@@ -38,7 +38,8 @@ call "%VS_DEV_CMD%" -arch=x64 -host_arch=x64
 :: Add CMake and Ninja from VS to PATH in case they are not added
 set "CMAKE_DIR=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
 set "NINJA_DIR=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja"
-set "PATH=%CMAKE_DIR%;%NINJA_DIR%;C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;%PATH%"
+set "QT_BIN_DIR=C:\Users\Tyler\6.10.3\msvc2022_64\bin"
+set "PATH=%QT_BIN_DIR%;%CMAKE_DIR%;%NINJA_DIR%;C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;%PATH%"
 
 :: Reconfigure project with Updater enabled and Qt6 prefix path
 echo [INFO] Configuring CMake project...
@@ -60,7 +61,7 @@ if %ERRORLEVEL% neq 0 (
 
 :: Run tests
 echo [INFO] Running tests...
-ctest --preset windows_msvc --output-on-failure
+ctest --preset windows_msvc -C %BUILD_CONFIG% --output-on-failure
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Tests failed.
