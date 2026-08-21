@@ -20,6 +20,8 @@ public:
     void setForceRepair(bool force) { m_forceRepair = force; }
     bool isForceRepair() const { return m_forceRepair; }
 
+    QString getOrComputeHash(const QString& relPath, const QString& absPath);
+
 protected:
     void executeTask() override;
 
@@ -61,7 +63,5 @@ private:
 
     void loadHashCache();
     void saveHashCache();
-    QString getOrComputeHash(const QString& relPath, const QString& absPath);
-    void deleteOrphanedFiles(const QStringList& filesToKeep);
 };
 
