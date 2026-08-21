@@ -58,6 +58,15 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
+:: Run tests
+echo [INFO] Running tests...
+ctest --preset windows_msvc --output-on-failure
+
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Tests failed.
+    exit /b %ERRORLEVEL%
+)
+
 :: Install binaries locally
 echo [INFO] Cleaning and installing built binaries to staging directory...
 if exist "install" (
