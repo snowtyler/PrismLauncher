@@ -74,6 +74,7 @@
 #include <QProgressDialog>
 #include <QShortcut>
 #include <QStatusBar>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QWidget>
@@ -1635,18 +1636,18 @@ void MainWindow::on_actionSettings_triggered()
 
 void MainWindow::globalSettingsClosed()
 {
-    // FIXME: quick HACK to make this work. improve, optimize.
-    APPLICATION->instances()->loadList();
-    proxymodel->invalidate();
-    proxymodel->sort(0);
     updateMainToolBar();
     updateLaunchButton();
     updateThemeMenu();
     updateStatusCenter();
-    // This needs to be done to prevent UI elements disappearing in the event the config is changed
-    // but Prism Launcher exits abnormally, causing the window state to never be saved:
     APPLICATION->settings()->set("MainWindowState", QString::fromUtf8(saveState().toBase64()));
     update();
+
+    QTimer::singleShot(0, this, [this] {
+        APPLICATION->instances()->loadList();
+        proxymodel->invalidate();
+        proxymodel->sort(0);
+    });
 }
 
 void MainWindow::on_actionEditInstance_triggered()

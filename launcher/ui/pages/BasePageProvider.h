@@ -15,13 +15,28 @@
 
 #pragma once
 
+#include <QIcon>
 #include <functional>
 #include "ui/pages/BasePage.h"
+
+struct PageDescriptor {
+    QString id;
+    QString displayName;
+    QIcon icon;
+    QString helpPage;
+    std::function<BasePage*()> creator;
+};
 
 class BasePageProvider {
    public:
     virtual QList<BasePage*> getPages() = 0;
     virtual QString dialogTitle() = 0;
+    virtual bool supportsLazyPages() const { return false; }
+    virtual const QList<PageDescriptor>& pageDescriptors() const
+    {
+        static const QList<PageDescriptor> empty;
+        return empty;
+    }
 };
 
 class GenericPageProvider : public BasePageProvider {
@@ -34,23 +49,30 @@ class GenericPageProvider : public BasePageProvider {
     QList<BasePage*> getPages() override
     {
         QList<BasePage*> pages;
-        for (PageCreator creator : m_creators) {
+        for (auto& desc : m_descriptors) {
+            pages.append(desc.creator());
+        }
+        for (auto& creator : m_creators) {
             pages.append(creator());
         }
         return pages;
     }
     QString dialogTitle() override { return m_dialogTitle; }
 
+    bool supportsLazyPages() const override { return !m_descriptors.isEmpty() && m_creators.isEmpty(); }
+    const QList<PageDescriptor>& pageDescriptors() const override { return m_descriptors; }
+
     void setDialogTitle(const QString& title) { m_dialogTitle = title; }
     void addPageCreator(PageCreator page) { m_creators.append(page); }
 
     template <typename PageClass>
-    void addPage()
+    void addPage(const QString& id, const QString& displayName, const QIcon& icon, const QString& helpPage = {})
     {
-        addPageCreator([]() { return new PageClass(); });
+        m_descriptors.append({ id, displayName, icon, helpPage, []() { return new PageClass(); } });
     }
 
    private:
+    QList<PageDescriptor> m_descriptors;
     QList<PageCreator> m_creators;
     QString m_dialogTitle;
 };

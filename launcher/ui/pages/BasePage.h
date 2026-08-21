@@ -67,6 +67,10 @@ class BasePage {
     virtual void setParentContainer(BasePageContainer* container) { m_container = container; };
     virtual void retranslate() {}
 
+    // False only for lightweight placeholder pages whose real widget has not been constructed
+    // yet (see the lazy page construction in PageContainer).
+    bool isPageInitialized() const { return m_pageInitialized; }
+
    public:
     int stackIndex = -1;
     int listIndex = -1;
@@ -75,6 +79,7 @@ class BasePage {
    protected:
     BasePageContainer* m_container = nullptr;
     bool isOpened = false;
+    bool m_pageInitialized = true;
 };
 
 using BasePagePtr = std::shared_ptr<BasePage>;

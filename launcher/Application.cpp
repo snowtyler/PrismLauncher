@@ -915,15 +915,20 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         // Init page provider
         {
             m_globalSettingsProvider = std::make_unique<GenericPageProvider>(tr("Settings"));
-            m_globalSettingsProvider->addPage<LauncherPage>();
-            m_globalSettingsProvider->addPage<LanguagePage>();
-            m_globalSettingsProvider->addPage<AppearancePage>();
-            m_globalSettingsProvider->addPage<MinecraftPage>();
-            m_globalSettingsProvider->addPage<JavaPage>();
-            m_globalSettingsProvider->addPage<AccountListPage>();
-            m_globalSettingsProvider->addPage<APIPage>();
-            m_globalSettingsProvider->addPage<ExternalToolsPage>();
-            m_globalSettingsProvider->addPage<ProxyPage>();
+            m_globalSettingsProvider->addPage<LauncherPage>("launcher-settings", tr("General"), QIcon::fromTheme("settings"),
+                                                            "Launcher-settings");
+            m_globalSettingsProvider->addPage<LanguagePage>("language-settings", tr("Language"), QIcon::fromTheme("language"),
+                                                            "Language-settings");
+            m_globalSettingsProvider->addPage<AppearancePage>("appearance-settings", tr("Appearance"), QIcon::fromTheme("appearance"),
+                                                              "Launcher-settings");
+            m_globalSettingsProvider->addPage<MinecraftPage>("minecraft-settings", tr("Minecraft"), QIcon::fromTheme("minecraft"),
+                                                             "Minecraft-settings");
+            m_globalSettingsProvider->addPage<JavaPage>("java-settings", tr("Java"), QIcon::fromTheme("java"), "Java-settings");
+            m_globalSettingsProvider->addPage<AccountListPage>("accounts", tr("Accounts"), QIcon::fromTheme("accounts"),
+                                                               "getting-started/adding-an-account");
+            m_globalSettingsProvider->addPage<APIPage>("apis", tr("Services"), QIcon::fromTheme("worlds"), "APIs");
+            m_globalSettingsProvider->addPage<ExternalToolsPage>("external-tools", tr("Tools"), QIcon::fromTheme("externaltools"), "Tools");
+            m_globalSettingsProvider->addPage<ProxyPage>("proxy-settings", tr("Proxy"), QIcon::fromTheme("proxy"), "Proxy-settings");
         }
 
         PixmapCache::setInstance(new PixmapCache(this));

@@ -69,6 +69,13 @@ class PageModel : public QAbstractListModel {
     }
     const QList<BasePage*>& pages() const { return m_pages; }
 
+    void replacePage(int index, BasePage* page)
+    {
+        m_pages[index] = page;
+        QModelIndex mi = QAbstractListModel::index(index);
+        emit dataChanged(mi, mi);
+    }
+
     BasePage* findPageEntryById(QString id)
     {
         for (auto page : m_pages) {

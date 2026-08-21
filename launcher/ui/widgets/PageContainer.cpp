@@ -58,6 +58,21 @@
 #include "Application.h"
 #include "DesktopServices.h"
 
+class StubPage : public QWidget, public BasePage {
+   public:
+    StubPage(const PageDescriptor& desc, QWidget* parent = nullptr) : QWidget(parent), m_desc(desc) { m_pageInitialized = false; }
+
+    QString id() const override { return m_desc.id; }
+    QString displayName() const override { return m_desc.displayName; }
+    QIcon icon() const override { return m_desc.icon; }
+    QString helpPage() const override { return m_desc.helpPage; }
+
+    const PageDescriptor& descriptor() const { return m_desc; }
+
+   private:
+    PageDescriptor m_desc;
+};
+
 class PageEntryFilterModel : public QSortFilterProxyModel {
    public:
     explicit PageEntryFilterModel(QObject* parent = nullptr) : QSortFilterProxyModel(parent) {}
@@ -76,6 +91,15 @@ class PageEntryFilterModel : public QSortFilterProxyModel {
     }
 };
 
+static void initPage(BasePage* page, int index, PageContainer* container, QStackedLayout* pageStack)
+{
+    auto* widget = dynamic_cast<QWidget*>(page);
+    widget->setParent(container);
+    page->stackIndex = pageStack->addWidget(widget);
+    page->listIndex = index;
+    page->setParentContainer(container);
+}
+
 PageContainer::PageContainer(BasePageProvider* pageProvider, QString defaultId, QWidget* parent)
     : QWidget(parent)
     , m_proxyModel(new PageEntryFilterModel(this))
@@ -84,21 +108,33 @@ PageContainer::PageContainer(BasePageProvider* pageProvider, QString defaultId, 
     createUI();
     useSidebarStyle(true);
 
-    int counter = 0;
-    auto pages = pageProvider->getPages();
-    for (auto* page : pages) {
-        auto* widget = dynamic_cast<QWidget*>(page);
-        widget->setParent(this);
-        page->stackIndex = m_pageStack->addWidget(widget);
-        page->listIndex = counter;
-        page->setParentContainer(this);
-        counter++;
-        page->updateExtraInfo = [this](const QString& id, const QString& info) {
-            if (m_currentPage && id == m_currentPage->id()) {
-                m_header->setText(m_currentPage->displayName() + info);
-            }
-        };
+    QList<BasePage*> pages;
+
+    if (pageProvider->supportsLazyPages()) {
+        const auto& descriptors = pageProvider->pageDescriptors();
+        int counter = 0;
+        for (const auto& desc : descriptors) {
+            auto* stub = new StubPage(desc, this);
+            stub->stackIndex = m_pageStack->addWidget(stub);
+            stub->listIndex = counter;
+            stub->setParentContainer(this);
+            pages.append(stub);
+            counter++;
+        }
+    } else {
+        int counter = 0;
+        pages = pageProvider->getPages();
+        for (auto* page : pages) {
+            initPage(page, counter, this, m_pageStack);
+            counter++;
+            page->updateExtraInfo = [this](const QString& id, const QString& info) {
+                if (m_currentPage && id == m_currentPage->id()) {
+                    m_header->setText(m_currentPage->displayName() + info);
+                }
+            };
+        }
     }
+
     m_model->setPages(pages);
 
     m_proxyModel->setSourceModel(m_model);
@@ -200,7 +236,9 @@ void PageContainer::retranslate()
     }
 
     for (auto* page : m_model->pages()) {
-        page->retranslate();
+        if (page->isPageInitialized()) {
+            page->retranslate();
+        }
     }
 }
 
@@ -219,6 +257,38 @@ void PageContainer::useSidebarStyle(bool sidebar)
     m_pageList->setProperty("_kde_side_panel_view", sidebar);
 }
 
+void PageContainer::materializePage(int row)
+{
+    auto* stub = dynamic_cast<StubPage*>(m_model->pages().at(row));
+    if (!stub)
+        return;
+
+    const auto& desc = stub->descriptor();
+    auto* realPage = desc.creator();
+
+    // Swap the real page in at the exact stack position the stub occupied, so that
+    // the stackIndex values cached on every other page stay valid. Removing the stub
+    // and re-inserting at the same index leaves all other indices unchanged.
+    int idx = stub->stackIndex;
+    m_pageStack->removeWidget(stub);
+    delete stub;
+
+    auto* widget = dynamic_cast<QWidget*>(realPage);
+    widget->setParent(this);
+    m_pageStack->insertWidget(idx, widget);
+    realPage->stackIndex = idx;
+    realPage->listIndex = row;
+    realPage->setParentContainer(this);
+    realPage->updateExtraInfo = [this](const QString& id, const QString& info) {
+        if (m_currentPage && id == m_currentPage->id()) {
+            m_header->setText(m_currentPage->displayName() + info);
+        }
+    };
+
+    m_model->replacePage(row, realPage);
+    m_currentPage = realPage;
+}
+
 void PageContainer::showPage(int row)
 {
     if (m_currentPage) {
@@ -230,6 +300,9 @@ void PageContainer::showPage(int row)
         m_currentPage = nullptr;
     }
     if (m_currentPage) {
+        if (!m_currentPage->isPageInitialized()) {
+            materializePage(row);
+        }
         m_pageStack->setCurrentIndex(m_currentPage->stackIndex);
         m_header->setText(m_currentPage->displayName());
         m_currentPage->opened();
@@ -276,7 +349,7 @@ bool PageContainer::prepareToClose()
 bool PageContainer::saveAll()
 {
     for (auto* page : m_model->pages()) {
-        if (!page->apply()) {
+        if (page->isPageInitialized() && !page->apply()) {
             return false;
         }
     }

@@ -55,6 +55,15 @@ PageDialog::PageDialog(BasePageProvider* pageProvider, QString defaultId, QWidge
     connect(buttons->button(QDialogButtonBox::Help), &QPushButton::clicked, m_container, &PageContainer::help);
 
     restoreGeometry(QByteArray::fromBase64(APPLICATION->settings()->get("PagedGeometry").toString().toUtf8()));
+
+    // On Windows a freshly created top-level window is briefly painted with the native white
+    // background brush before Qt's backing store is ready, causing a white flash. Render the
+    // dialog off-screen first so its backing store already holds the themed content by the time
+    // the window is actually shown by exec().
+    setAttribute(Qt::WA_DontShowOnScreen, true);
+    show();
+    hide();
+    setAttribute(Qt::WA_DontShowOnScreen, false);
 }
 
 void PageDialog::accept()

@@ -95,6 +95,7 @@ class PageContainer : public QWidget, public BasePageContainer {
    private:
     void createUI();
     void retranslate();
+    void materializePage(int row);
 
    public slots:
     void help();
