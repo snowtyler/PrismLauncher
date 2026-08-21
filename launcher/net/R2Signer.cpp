@@ -18,7 +18,8 @@ SignedRequest sign(
     const QString& accessKey,
     const QString& secretKey,
     const QString& region,
-    const QString& service
+    const QString& service,
+    bool isPrecomputedHash
 ) {
     QDateTime now = QDateTime::currentDateTimeUtc();
     QByteArray dateStr = now.toString("yyyyMMdd").toUtf8();
@@ -42,7 +43,12 @@ SignedRequest sign(
         canonicalUri = "/";
     }
 
-    QByteArray payloadHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex().toLower();
+    QByteArray payloadHash;
+    if (isPrecomputedHash) {
+        payloadHash = payload;
+    } else {
+        payloadHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex().toLower();
+    }
 
     QMap<QByteArray, QByteArray> canonicalHeaders;
     canonicalHeaders["host"] = host;

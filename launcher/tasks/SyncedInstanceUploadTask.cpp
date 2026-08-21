@@ -75,7 +75,9 @@ void SyncedInstanceUploadTask::fetchRemoteManifest()
     }
 
     QUrl url(publicUrl + "shortcodes/" + m_shortcode + ".json?t=" + QString::number(QDateTime::currentMSecsSinceEpoch()));
-    m_manifestReply = APPLICATION->network()->get(QNetworkRequest(url));
+    QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    m_manifestReply = APPLICATION->network()->get(req);
     connect(m_manifestReply, &QNetworkReply::finished, this, &SyncedInstanceUploadTask::remoteManifestFetched);
 }
 
@@ -332,21 +334,30 @@ void SyncedInstanceUploadTask::performSync()
 
     if (action.type == "PUT") {
         QString absPath = action.localOverridePath.isEmpty() ? (m_instance->instanceRoot() + "/" + action.relPath) : action.localOverridePath;
-        QFile file(absPath);
-        if (!file.open(QFile::ReadOnly)) {
+        auto* file = new QFile(absPath);
+        if (!file->open(QFile::ReadOnly)) {
+            delete file;
             emitFailed(tr("Failed to read file for upload: %1").arg(action.relPath));
             return;
         }
-        QByteArray data = file.readAll();
 
-        SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, data, m_accessKey, m_secretKey);
+        SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, "UNSIGNED-PAYLOAD", m_accessKey, m_secretKey, "auto", "s3", true);
 
         QNetworkRequest req(url);
+        req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+        req.setHeader(QNetworkRequest::ContentLengthHeader, file->size());
         for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
             req.setRawHeader(it.key(), it.value());
         }
 
-        m_currentActionReply = APPLICATION->network()->put(req, data);
+        m_currentActionReply = APPLICATION->network()->put(req, file);
+        file->setParent(m_currentActionReply);
+
+        connect(m_currentActionReply, &QNetworkReply::sslErrors, this, [this](const QList<QSslError>& errors) {
+            for (const auto& err : errors) {
+                qWarning() << "SSL Error during upload:" << err.errorString();
+            }
+        });
 
         connect(m_currentActionReply, &QNetworkReply::uploadProgress, this, [this, action, fileName](qint64 bytesSent, qint64 bytesTotal) {
             qint64 fileTotal = (bytesTotal > 0) ? bytesTotal : action.size;
@@ -369,6 +380,7 @@ void SyncedInstanceUploadTask::performSync()
         SigV4::SignedRequest signedReq = SigV4::sign(action.type, url, QByteArray(), m_accessKey, m_secretKey);
 
         QNetworkRequest req(url);
+        req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
         for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
             req.setRawHeader(it.key(), it.value());
         }
@@ -506,6 +518,8 @@ void SyncedInstanceUploadTask::uploadManifest()
     SigV4::SignedRequest signedReq = SigV4::sign("PUT", url, m_manifestData, m_accessKey, m_secretKey);
 
     QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    req.setHeader(QNetworkRequest::ContentLengthHeader, m_manifestData.size());
     for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
         req.setRawHeader(it.key(), it.value());
     }
@@ -566,6 +580,8 @@ void SyncedInstanceUploadTask::uploadBanner()
     SigV4::SignedRequest signedReq = SigV4::sign("PUT", url, bannerData, m_accessKey, m_secretKey);
 
     QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    req.setHeader(QNetworkRequest::ContentLengthHeader, bannerData.size());
     for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
         req.setRawHeader(it.key(), it.value());
     }
@@ -609,7 +625,9 @@ void SyncedInstanceUploadTask::fetchRegistry()
     }
 
     QUrl url(publicUrl + "registry.json?t=" + QString::number(QDateTime::currentMSecsSinceEpoch()));
-    m_manifestReply = APPLICATION->network()->get(QNetworkRequest(url));
+    QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    m_manifestReply = APPLICATION->network()->get(req);
     connect(m_manifestReply, &QNetworkReply::finished, this, &SyncedInstanceUploadTask::registryFetched);
 }
 
@@ -726,6 +744,8 @@ void SyncedInstanceUploadTask::uploadRegistry(const QByteArray& registryData)
     SigV4::SignedRequest signedReq = SigV4::sign("PUT", url, registryData, m_accessKey, m_secretKey);
 
     QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    req.setHeader(QNetworkRequest::ContentLengthHeader, registryData.size());
     for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
         req.setRawHeader(it.key(), it.value());
     }

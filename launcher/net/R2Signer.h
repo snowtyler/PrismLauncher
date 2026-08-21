@@ -18,7 +18,8 @@ SignedRequest sign(
     const QString& accessKey,
     const QString& secretKey,
     const QString& region = "auto",
-    const QString& service = "s3"
+    const QString& service = "s3",
+    bool isPrecomputedHash = false
 );
 
 } // namespace SigV4

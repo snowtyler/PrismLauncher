@@ -69,9 +69,6 @@ ModpackDashboard::ModpackDashboard(QWidget* parent)
     navLayout->setColumnStretch(1, 0);
     navLayout->setColumnStretch(2, 1);
 
-    auto* leftSpacer = new QWidget(contentWidget);
-    leftSpacer->setFixedWidth(160);
-    navLayout->addWidget(leftSpacer, 0, 0, Qt::AlignLeft);
 
     auto* centerContainer = new QWidget(contentWidget);
     auto* centerGroup = new QHBoxLayout(centerContainer);

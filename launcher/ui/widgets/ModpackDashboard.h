@@ -41,7 +41,6 @@ private:
     QLineEdit* m_searchEdit = nullptr;
     QPushButton* m_refreshBtn = nullptr;
     QPushButton* m_enterCodeBtn = nullptr;
-
     bool m_adminMode = false;
     QList<QJsonObject> m_packs;
     QList<ModpackCard*> m_cards;
