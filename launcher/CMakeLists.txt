@@ -53,6 +53,8 @@ set(CORE_SOURCES
     InstanceImportTask.cpp
 
     # Synced instance tasks
+    tasks/SyncPlan.h
+    tasks/SyncPlan.cpp
     tasks/SyncedInstanceUpdateTask.h
     tasks/SyncedInstanceUpdateTask.cpp
     tasks/SyncedInstanceUploadTask.h
