@@ -1918,25 +1918,7 @@ void MainWindow::checkForModpackUpdates(bool isStartup)
         auto updatedList = checkTask->updatedInstances();
         updateLaunchButton();
 
-        if (!updatedList.isEmpty()) {
-            if (updatedList.size() == 1) {
-                auto* inst = updatedList.first();
-                showToast(tr("Modpack Update Available"),
-                          tr("An update is available for %1 (%2).").arg(inst->name(), inst->modpackUpdateVersion()),
-                          tr("Update Now"),
-                          [this, inst]() {
-                              setSelectedInstanceById(inst->id());
-                              on_actionLaunchInstance_triggered();
-                          });
-            } else {
-                showToast(tr("Modpack Updates Available"),
-                          tr("%1 modpacks have available updates.").arg(updatedList.size()),
-                          tr("View Updates"),
-                          [this, updatedList]() {
-                              setSelectedInstanceById(updatedList.first()->id());
-                          });
-            }
-        } else if (!isStartup) {
+        if (updatedList.isEmpty() && !isStartup) {
             showToast(tr("Modpack Updates"), tr("All modpacks are up to date."));
         }
     });
