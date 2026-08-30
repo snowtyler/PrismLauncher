@@ -77,6 +77,8 @@ private:
     qint64 m_totalBytes = 0;
     qint64 m_completedBytes = 0;
 
+    QString m_loaderType;
+    QString m_gameVersion;
     QJsonArray m_finalFiles; // To build the manifest at the end
     QJsonObject m_voxyCacheObj; // Voxy cache single-zip metadata
     QByteArray m_manifestData;       // Generated manifest content

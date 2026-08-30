@@ -734,6 +734,12 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
                         QString relPath = QDir(m_selectedInstance->instanceRoot()).relativeFilePath(fileInfo.absoluteFilePath());
                         selectedRelPaths.append(relPath);
                     }
+                    qDebug() << "Upload: collected" << selectedRelPaths.size() << "files from instance root" << m_selectedInstance->instanceRoot();
+                    if (selectedRelPaths.size() <= 20) {
+                        qDebug() << "Upload: files:" << selectedRelPaths;
+                    } else {
+                        qDebug() << "Upload: first 20 files:" << selectedRelPaths.mid(0, 20);
+                    }
 
                     bool forceConfigOverwrite = dlg.forceConfigOverwriteCheck ? dlg.forceConfigOverwriteCheck->isChecked() : false;
                     bool forceVoxyRedownload = dlg.forceVoxyCacheRedownloadCheck ? dlg.forceVoxyCacheRedownloadCheck->isChecked() : false;

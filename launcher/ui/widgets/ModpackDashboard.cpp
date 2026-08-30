@@ -5,6 +5,7 @@
 #include "minecraft/VanillaInstanceCreationTask.h"
 #include "tasks/SyncedInstanceUpdateTask.h"
 #include "tasks/SyncedInstanceUploadTask.h"
+#include "tasks/SyncedInstancePurgeTask.h"
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui/dialogs/UploadConfirmDialog.h"
 #include "FileSystem.h"
@@ -322,47 +323,6 @@ void ModpackDashboard::privatePackManifestFetched()
 
 void ModpackDashboard::renderCards()
 {
-    // Append local synced instances if not in m_packs
-    for (int i = 0; i < APPLICATION->instances()->count(); ++i) {
-        BaseInstance* inst = APPLICATION->instances()->at(i);
-        if (inst->settings()->get("IsSyncedInstance").toBool()) {
-            QString shortcode = inst->settings()->get("SyncShortcode").toString();
-            if (shortcode.isEmpty()) continue;
-
-            bool exists = false;
-            for (const auto& existing : m_packs) {
-                if (existing["shortcode"].toString() == shortcode) {
-                    exists = true;
-                    break;
-                }
-            }
-
-            if (!exists) {
-                QJsonObject pack;
-                pack["shortcode"] = shortcode;
-                pack["name"] = inst->name();
-                pack["version"] = inst->settings()->get("SyncVersion").toString();
-                if (pack["version"].toString().isEmpty()) {
-                    pack["version"] = "1.0.0";
-                }
-                pack["description"] = inst->settings()->get("ExportSummary").toString();
-                if (pack["description"].toString().isEmpty()) {
-                    pack["description"] = tr("Local synced instance.");
-                }
-
-                QString publicUrl = APPLICATION->settings()->get("SyncR2PublicUrl").toString();
-                if (!publicUrl.endsWith('/')) {
-                    publicUrl += '/';
-                }
-                pack["banner_url"] = publicUrl + "assets/" + shortcode + "-banner.png";
-                pack["icon_url"] = publicUrl + "assets/" + shortcode + "-icon.png";
-                pack["is_private"] = inst->settings()->get("SyncIsPrivate").toBool();
-
-                m_packs.append(pack);
-            }
-        }
-    }
-
     m_loadingLabel->setVisible(false);
 
     // Create cards for all packs
@@ -480,6 +440,50 @@ void ModpackDashboard::onCardActionTriggered(const QString& action, const QStrin
                 refreshDashboard();
             }
         }
+    } else if (action == "purge") {
+        QString accessKey = APPLICATION->settings()->get("SyncR2AccessKey").toString();
+        QString secretKey = APPLICATION->settings()->get("SyncR2SecretKey").toString();
+        if (accessKey.isEmpty() || secretKey.isEmpty()) {
+            QMessageBox::warning(this, tr("Missing Credentials"), tr("R2 access key and secret key are required to remove packs from the server."));
+            return;
+        }
+
+        auto response = QMessageBox::warning(this, tr("Remove from Server"),
+                                             tr("Are you sure you want to permanently delete \"%1\" from the server?\n\n"
+                                                "This will remove all remote files, the manifest, and the registry entry. "
+                                                "This action cannot be undone.")
+                                                 .arg(shortcode),
+                                             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (response == QMessageBox::Yes) {
+            auto purgeTask = makeShared<SyncedInstancePurgeTask>(shortcode, accessKey, secretKey);
+            ProgressDialog purgeDialog(this);
+            purgeDialog.execWithTask(purgeTask.get());
+
+            if (purgeTask->wasSuccessful()) {
+                for (int j = 0; j < APPLICATION->instances()->count(); ++j) {
+                    BaseInstance* syncedInst = APPLICATION->instances()->at(j);
+                    if (syncedInst->settings()->get("SyncShortcode").toString() == shortcode) {
+                        syncedInst->settings()->set("IsSyncedInstance", false);
+                        syncedInst->settings()->set("SyncShortcode", QString());
+                        syncedInst->saveNow();
+                    }
+                }
+                QStringList privateCodes = APPLICATION->settings()->get("PrivatePacks").toStringList();
+                if (privateCodes.removeAll(shortcode) > 0) {
+                    APPLICATION->settings()->set("PrivatePacks", privateCodes);
+                }
+                QMessageBox::information(this, tr("Pack Removed"), tr("The modpack \"%1\" has been removed from the server.").arg(shortcode));
+                refreshDashboard();
+            } else if (!purgeTask->failReason().isEmpty()) {
+                QMessageBox::critical(this, tr("Purge Failed"), purgeTask->failReason());
+            }
+        }
+    } else if (action == "hide") {
+        QStringList privateCodes = APPLICATION->settings()->get("PrivatePacks").toStringList();
+        if (privateCodes.removeAll(shortcode) > 0) {
+            APPLICATION->settings()->set("PrivatePacks", privateCodes);
+        }
+        refreshDashboard();
     } else if (action == "install") {
         // Fetch manifest & install
         QString publicUrl = APPLICATION->settings()->get("SyncR2PublicUrl").toString();

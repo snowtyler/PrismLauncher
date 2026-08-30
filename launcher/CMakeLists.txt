@@ -59,6 +59,8 @@ set(CORE_SOURCES
     tasks/SyncedInstanceUpdateTask.cpp
     tasks/SyncedInstanceUploadTask.h
     tasks/SyncedInstanceUploadTask.cpp
+    tasks/SyncedInstancePurgeTask.h
+    tasks/SyncedInstancePurgeTask.cpp
     tasks/ModpackUpdateCheckTask.h
     tasks/ModpackUpdateCheckTask.cpp
 

@@ -190,8 +190,9 @@ void ModrinthCheckUpdate::checkVersionsResponse(QByteArray* response, std::optio
                     }
                 }
 
-                m_updates.emplace_back(pack->name, hash, oldVersion, projectVer.version_number, projectVer.version_type,
-                                       projectVer.changelog, ModPlatform::ResourceProvider::MODRINTH, downloadTask, resource->enabled(), resource->isPinned());
+                m_updates.emplace_back(pack->name, hash, oldVersion, projectVer.version_number, projectVer.date,
+                                       projectVer.version_type, projectVer.changelog, ModPlatform::ResourceProvider::MODRINTH,
+                                       downloadTask, resource->enabled(), resource->isPinned());
             }
             m_deps.append(std::make_shared<GetModDependenciesTask::PackDependency>(pack, projectVer));
 

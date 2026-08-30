@@ -23,6 +23,8 @@
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
 
 #include <QClipboard>
+#include <QDateTime>
+#include <QLocale>
 #include <QShortcut>
 #include <QTextBrowser>
 #include <QTreeWidgetItem>
@@ -242,10 +244,16 @@ void ResourceUpdateDialog::checkCandidates()
                 }
                 auto downloadTask = makeShared<ResourceDownloadTask>(dep->pack, dep->version, m_resourceModel, true, "dependency");
                 auto extraInfo = dependencyExtraInfo.value(dep->version.addonId.toString());
-                CheckUpdateTask::Update updatable = {
-                    dep->pack->name, dep->version.hash,   tr("Not installed"), dep->version.version,      dep->version.version_type,
-                    changelog,       dep->pack->provider, downloadTask,        !extraInfo.maybe_installed
-                };
+                CheckUpdateTask::Update updatable = { dep->pack->name,
+                                                      dep->version.hash,
+                                                      tr("Not installed"),
+                                                      dep->version.version,
+                                                      dep->version.date,
+                                                      dep->version.version_type,
+                                                      changelog,
+                                                      dep->pack->provider,
+                                                      downloadTask,
+                                                      !extraInfo.maybe_installed };
 
                 appendResource(updatable, extraInfo.required_by);
                 m_tasks.insert(updatable.name, updatable.download);
@@ -477,6 +485,14 @@ void ResourceUpdateDialog::appendResource(const CheckUpdateTask::Update& info, Q
     auto* newVersionItem = new QTreeWidgetItem(itemTop);
     newVersionItem->setText(0, tr("New version: %1").arg(info.newVersion));
     newVersionItem->setData(0, Qt::UserRole, info.newVersion);
+
+    if (!info.newDate.isEmpty()) {
+        auto parsedDate = QDateTime::fromString(info.newDate, Qt::ISODate);
+        QString displayDate = parsedDate.isValid() ? QLocale().toString(parsedDate.toLocalTime(), QLocale::ShortFormat) : info.newDate;
+        auto* newDateItem = new QTreeWidgetItem(itemTop);
+        newDateItem->setText(0, tr("Update released: %1").arg(displayDate));
+        newDateItem->setData(0, Qt::UserRole, displayDate);
+    }
 
     if (info.newVersionType.has_value()) {
         auto* newVersionTypeItem = new QTreeWidgetItem(itemTop);

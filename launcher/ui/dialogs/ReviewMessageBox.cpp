@@ -127,3 +127,15 @@ void ReviewMessageBox::on_toggleDepsButton_clicked()
     for (auto dep : m_deps)
         dep->setCheckState(0, state);
 };
+
+void ReviewMessageBox::on_toggleAllButton_clicked()
+{
+    m_all_checked = !m_all_checked;
+    auto state = m_all_checked ? Qt::Checked : Qt::Unchecked;
+    for (int i = 0; i < ui->modTreeWidget->topLevelItemCount(); ++i) {
+        auto* item = ui->modTreeWidget->topLevelItem(i);
+        // Skip items that can't be toggled (e.g. pinned mods)
+        if (item->flags() & Qt::ItemIsUserCheckable)
+            item->setCheckState(0, state);
+    }
+};

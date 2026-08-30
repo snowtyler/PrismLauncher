@@ -31,6 +31,7 @@ class ReviewMessageBox : public QDialog {
 
    protected slots:
     void on_toggleDepsButton_clicked();
+    void on_toggleAllButton_clicked();
 
    protected:
     ReviewMessageBox(QWidget* parent, const QString& title, const QString& icon);
@@ -39,4 +40,5 @@ class ReviewMessageBox : public QDialog {
 
     QList<QTreeWidgetItem*> m_deps;
     bool m_deps_checked = true;
+    bool m_all_checked = true;
 };

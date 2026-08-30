@@ -69,14 +69,20 @@ void SyncedInstanceUploadTask::executeTask()
 
 void SyncedInstanceUploadTask::fetchRemoteManifest()
 {
-    QString publicUrl = m_publicUrl;
-    if (!publicUrl.endsWith('/')) {
-        publicUrl += '/';
+    QStringList segments = (m_bucket + "/shortcodes/" + m_shortcode + ".json").split('/', Qt::SkipEmptyParts);
+    QByteArray encodedPath;
+    for (const QString& seg : segments) {
+        encodedPath += "/" + QUrl::toPercentEncoding(seg);
     }
+    QUrl url = QUrl::fromEncoded(m_endpoint.toUtf8() + encodedPath);
 
-    QUrl url(publicUrl + "shortcodes/" + m_shortcode + ".json?t=" + QString::number(QDateTime::currentMSecsSinceEpoch()));
+    SigV4::SignedRequest signedReq = SigV4::sign("GET", url, QByteArray(), m_accessKey, m_secretKey);
+
     QNetworkRequest req(url);
     req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    for (auto it = signedReq.headers.begin(); it != signedReq.headers.end(); ++it) {
+        req.setRawHeader(it.key(), it.value());
+    }
     m_manifestReply = APPLICATION->network()->get(req);
     connect(m_manifestReply, &QNetworkReply::finished, this, &SyncedInstanceUploadTask::remoteManifestFetched);
 }
@@ -97,6 +103,9 @@ void SyncedInstanceUploadTask::remoteManifestFetched()
     }
 
     QMap<QString, QString> remoteHashes;
+
+    qDebug() << "Upload: remote manifest fetch status:" << reply->error() << reply->errorString();
+    qDebug() << "Upload: m_selectedFiles count:" << m_selectedFiles.size();
 
     // A 404 error is acceptable; it means this is a new modpack upload
     if (reply->error() == QNetworkReply::NoError) {
@@ -121,6 +130,7 @@ void SyncedInstanceUploadTask::remoteManifestFetched()
     } else {
         qDebug() << "Manifest fetch returned error or 404 (acceptable for new packs):" << reply->errorString();
     }
+    qDebug() << "Upload: remote hashes count:" << remoteHashes.size();
 
     setStatus(tr("Comparing files and computing checksums..."));
     setProgress(0, m_selectedFiles.size());
@@ -485,10 +495,12 @@ void SyncedInstanceUploadTask::uploadManifest()
         }
     }
 
-    docObj["game_version"] = m_instance->settings()->get("IntendedVersion").toString();
-    if (docObj["game_version"].toString().isEmpty()) {
-        docObj["game_version"] = "1.21.1";
+    m_gameVersion = m_instance->settings()->get("IntendedVersion").toString();
+    if (m_gameVersion.isEmpty()) {
+        m_gameVersion = "1.21.1";
     }
+    m_loaderType = loaderType;
+    docObj["game_version"] = m_gameVersion;
     docObj["loader"] = loaderType;
     docObj["loader_version"] = loaderVersion;
 
@@ -661,10 +673,7 @@ void SyncedInstanceUploadTask::registryFetched()
     if (ver.isEmpty()) {
         ver = "1.0.0";
     }
-    QString mcVer = m_instance->settings()->get("IntendedVersion").toString();
-    if (mcVer.isEmpty()) {
-        mcVer = "1.21.1";
-    }
+    QString mcVer = m_gameVersion;
 
     // Default banners/icons based on shortcode if not set
     QString publicUrl = m_publicUrl;
@@ -701,6 +710,7 @@ void SyncedInstanceUploadTask::registryFetched()
             if (pack.contains("icon_url")) iconUrl = pack["icon_url"].toString();
             pack["banner_url"] = bannerUrl;
             pack["icon_url"] = iconUrl;
+            pack["loader"] = m_loaderType;
             pack["is_private"] = m_instance->settings()->get("SyncIsPrivate").toBool();
             packs[i] = pack;
             found = true;
@@ -720,6 +730,7 @@ void SyncedInstanceUploadTask::registryFetched()
         pack["game_version"] = mcVer;
         pack["banner_url"] = bannerUrl;
         pack["icon_url"] = iconUrl;
+        pack["loader"] = m_loaderType;
         pack["is_private"] = m_instance->settings()->get("SyncIsPrivate").toBool();
         packs.append(pack);
     }

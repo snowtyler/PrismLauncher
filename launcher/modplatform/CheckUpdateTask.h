@@ -23,6 +23,7 @@ class CheckUpdateTask : public Task {
         QString oldHash;
         QString oldVersion;
         QString newVersion;
+        QString newDate;
         std::optional<ModPlatform::IndexedVersionType> newVersionType;
         QString changelog;
         ModPlatform::ResourceProvider provider;
@@ -35,6 +36,7 @@ class CheckUpdateTask : public Task {
                QString oldH,
                QString oldV,
                QString newV,
+               QString newD,
                std::optional<ModPlatform::IndexedVersionType> newVType,
                QString changelog,
                ModPlatform::ResourceProvider p,
@@ -45,6 +47,7 @@ class CheckUpdateTask : public Task {
             , oldHash(std::move(oldH))
             , oldVersion(std::move(oldV))
             , newVersion(std::move(newV))
+            , newDate(std::move(newD))
             , newVersionType(newVType)
             , changelog(std::move(changelog))
             , provider(p)

@@ -72,9 +72,9 @@ ModpackCard::ModpackCard(const QJsonObject& packData, bool adminMode, QWidget* p
 
     m_bannerUrl = packData["banner_url"].toString();
     m_loader = packData["loader"].toString();
-    if (m_loader.isEmpty()) m_loader = "NeoForge";
-    m_mcVersion = packData["mc_version"].toString();
-    if (m_mcVersion.isEmpty()) m_mcVersion = "1.21.1";
+    if (m_loader.isEmpty()) m_loader = "Unknown";
+    m_mcVersion = packData["game_version"].toString();
+    if (m_mcVersion.isEmpty()) m_mcVersion = packData["mc_version"].toString();
 
     QString description = packData["description"].toString();
     if (description.isEmpty()) description = tr("A custom synced modpack.");
@@ -363,6 +363,15 @@ void ModpackCard::onSettingsButtonClicked()
     } else {
         QAction* installAction = menu.addAction(tr("Install Modpack"));
         connect(installAction, &QAction::triggered, [this]() { emit actionTriggered("install", m_shortcode); });
+
+        QAction* hideAction = menu.addAction(tr("Hide Modpack"));
+        connect(hideAction, &QAction::triggered, [this]() { emit actionTriggered("hide", m_shortcode); });
+    }
+
+    if (m_adminMode) {
+        menu.addSeparator();
+        QAction* purgeAction = menu.addAction(tr("Remove from Server"));
+        connect(purgeAction, &QAction::triggered, [this]() { emit actionTriggered("purge", m_shortcode); });
     }
 
     menu.exec(m_settingsButton->mapToGlobal(QPoint(0, m_settingsButton->height())));
